@@ -1,0 +1,16 @@
+.{
+    .name = "auroria",
+    .version = "0.0.0",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "README.md",
+    },
+    .dependencies = .{
+        .sqlite = .{
+            .url = "https://github.com/vrischmann/zig-sqlite/archive/63fbc664093f282743a76a89d43e69a20905ca90.tar.gz",
+            .hash = "1220b56a421cf352ec102d1952d6c52d9f8be062511d707e63138bf3263621971f51",
+        },
+    },
+}

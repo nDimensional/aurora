@@ -1,0 +1,4 @@
+.vscode/
+zig-out/
+zig-cache/
+SDK/

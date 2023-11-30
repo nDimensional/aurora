@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     app.addModule("sqlite", sqlite.module("sqlite"));
-    // app.linkLibrary(sqlite.artifact("sqlite"));
+    app.linkLibrary(sqlite.artifact("sqlite"));
 
     app.addRPath(LazyPath.relative("SDK/bin"));
     app.addLibraryPath(LazyPath.relative("SDK/bin"));

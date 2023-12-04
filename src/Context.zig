@@ -1,18 +1,15 @@
 const std = @import("std");
 const c = @import("c.zig");
 
-const Environment = @import("Environment.zig");
 const Context = @This();
 
-view: c.ULView = null,
 ref: c.JSContextRef = null,
 global: c.JSObjectRef = null,
 window: c.JSObjectRef = null,
 exception: c.JSValueRef = null,
 
-pub fn init(ctx: *Context, env: *Environment) void {
-    ctx.view = env.view;
-    ctx.ref = c.ulViewLockJSContext(env.view);
+pub fn init(ctx: *Context) void {
+    // ctx.ref = c.ulViewLockJSContext(env.view);
     std.log.info("locked js context", .{});
     ctx.global = c.JSContextGetGlobalObject(ctx.ref);
     ctx.window = @constCast(c.JSObjectGetProperty(ctx.ref, ctx.global, c.JSStringCreateWithUTF8CString("window"), null));

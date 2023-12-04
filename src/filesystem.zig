@@ -1,18 +1,14 @@
 const std = @import("std");
 
 const c = @import("c.zig");
+
 const utils = @import("utils.zig");
-
-var path_buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;
-
-fn update(user_data: ?*anyopaque) callconv(.C) void {
-    std.log.info("UPDATE ({any})", .{user_data});
-}
+const getString = utils.getString;
 
 fn fileExists(path: c.ULString) callconv(.C) bool {
-    std.log.info("fileExists({s})", .{utils.getString(path)});
+    std.log.info("Filesystem.fileExists({s})", .{getString(path)});
 
-    std.fs.cwd().access(utils.getString(path), .{}) catch |err| {
+    std.fs.cwd().access(getString(path), .{}) catch |err| {
         switch (err) {
             error.FileNotFound => return false,
             else => {
@@ -26,19 +22,19 @@ fn fileExists(path: c.ULString) callconv(.C) bool {
 }
 
 fn getFileMimeType(path: c.ULString) callconv(.C) c.ULString {
-    std.log.info("getFileMimeType({s})", .{utils.getString(path)});
+    std.log.info("Filesystem.getFileMimeType({s})", .{getString(path)});
     return c.ulCreateString("application/unknown");
 }
 
 fn getFileCharset(path: c.ULString) callconv(.C) c.ULString {
-    std.log.info("getFileCharset({s})", .{utils.getString(path)});
+    std.log.info("Filesystem.getFileCharset({s})", .{getString(path)});
     return c.ulCreateString("utf-8");
 }
 
 fn openFile(path: c.ULString) callconv(.C) c.ULBuffer {
-    std.log.info("openFile({s})", .{utils.getString(path)});
+    std.log.info("Filesystem.openFile({s})", .{getString(path)});
 
-    const fd = std.os.open(utils.getString(path), std.os.O.RDONLY, 644) catch |err| {
+    const fd = std.os.open(getString(path), std.os.O.RDONLY, 644) catch |err| {
         std.log.err("error opening file: {any}", .{err});
         return null;
     };
@@ -50,19 +46,18 @@ fn openFile(path: c.ULString) callconv(.C) c.ULBuffer {
         return null;
     };
 
-    const buffer = std.os.mmap(null, @intCast(stat.size), std.os.PROT.READ, std.os.MAP.SHARED, fd, 0) catch |err| {
+    const data = std.os.mmap(null, @intCast(stat.size), std.os.PROT.READ, std.os.MAP.SHARED, fd, 0) catch |err| {
         std.log.err("error opening file: {any}", .{err});
         return null;
     };
 
-    return c.ulCreateBuffer(buffer.ptr, @intCast(stat.size), null, &destroyFileBuffer);
+    return c.ulCreateBuffer(data.ptr, @intCast(stat.size), @ptrFromInt(data.len), &destroyFileBuffer);
 }
 
 fn destroyFileBuffer(user_data: ?*anyopaque, data: ?*anyopaque) callconv(.C) void {
-    std.log.info("destroyFileBuffer({any}, {any})", .{ user_data, data });
-    const ptr = @as([*]u8, @ptrCast(data));
-    _ = ptr;
-    // std.os.munmap(memory: []align(mem.page_size)const u8);
+    const ptr: [*]align(std.mem.page_size) const u8 = @alignCast(@ptrCast(data));
+    const len = @intFromPtr(user_data);
+    std.os.munmap(ptr[0..len]);
 }
 
 pub const filesystem = c.ULFileSystem{

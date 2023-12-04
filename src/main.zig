@@ -24,14 +24,14 @@ pub fn main() !void {
 
     const config = Config.create();
     defer config.destroy();
-    config.setCachePath("/Users/joel/Library/Caches/com.nDimensional.Aurora");
-    config.setResourcePathPrefix("/Users/joel/Projects/aurora/SDK/resources/");
+    // config.setCachePath("/Users/joel/Library/Caches/com.nDimensional.Aurora");
+    config.setResourcePathPrefix("SDK/resources/");
 
     const settings = Settings.create();
     defer settings.destroy();
     settings.setDeveloperName("nDimensional");
     settings.setAppName("Aurora");
-    settings.setFileSystemPath("/Users/joel/Projects/aurora/assets/");
+    // settings.setFileSystemPath("/Users/joel/Projects/aurora/assets/");
 
     const app = App.create(settings, config);
     defer app.destroy();
@@ -64,7 +64,7 @@ pub fn main() !void {
     });
 
     {
-        const html = try File.init("/Users/joel/Projects/aurora/assets/app.html");
+        const html = try File.init("assets/app.html");
         defer html.deinit();
         view.loadHTML(html.data);
     }
@@ -80,7 +80,7 @@ fn onDOMReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_f
 
     const view = View{ .ptr = @ptrCast(user_data) };
 
-    const js = File.init("/Users/joel/Projects/aurora/dist/index.js") catch @panic("failed to open file");
+    const js = File.init("dist/index.js") catch @panic("failed to open file");
     defer js.deinit();
 
     var exception: c.ULString = null;

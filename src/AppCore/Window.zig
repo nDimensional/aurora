@@ -11,12 +11,20 @@ const Window = @This();
 //     Maximizable = c.kWindowFlags_Maximizable,
 //     Hidden = c.kWindowFlags_Hidden,
 // };
+
 pub const Flags = struct {
     pub const Borderless = c.kWindowFlags_Borderless;
     pub const Tilted = c.kWindowFlags_Titled;
     pub const Resizable = c.kWindowFlags_Resizable;
     pub const Maximizable = c.kWindowFlags_Maximizable;
     pub const Hidden = c.kWindowFlags_Hidden;
+};
+
+pub const Callbacks = struct {
+    user_data: ?*anyopaque = null,
+
+    onClose: ?*const fn (user_data: ?*anyopaque, window: c.ULWindow) callconv(.C) void = null,
+    onResize: ?*const fn (user_data: ?*anyopaque, window: c.ULWindow, width: u32, height: u32) callconv(.C) void = null,
 };
 
 ptr: c.ULWindow,
@@ -26,9 +34,12 @@ ptr: c.ULWindow,
 ///
 pub fn create(monitor: Monitor, width: u32, height: u32, fullscreen: bool, window_flags: u32) Window {
     const ptr = c.ulCreateWindow(monitor.ptr, width, height, fullscreen, window_flags);
-    c.ulWindowSetCloseCallback(ptr, &onClose, null);
-    c.ulWindowSetResizeCallback(ptr, &onResize, null);
     return .{ .ptr = ptr };
+}
+
+pub fn attachCallbacks(self: Window, callbacks: Callbacks) void {
+    if (callbacks.onClose) |f| c.ulWindowSetCloseCallback(self.ptr, f, callbacks.user_data);
+    if (callbacks.onResize) |f| c.ulWindowSetResizeCallback(self.ptr, f, callbacks.user_data);
 }
 
 ///
@@ -176,16 +187,4 @@ pub fn pixelsToScreen(self: Window, val: i32) i32 {
 ///
 pub fn getNativeHandle(self: Window) ?*anyopaque {
     return c.ulWindowGetNativeHandle(self.ptr);
-}
-
-fn onClose(user_data: ?*anyopaque, window: c.ULWindow) callconv(.C) void {
-    _ = window;
-    _ = user_data;
-}
-
-fn onResize(user_data: ?*anyopaque, window: c.ULWindow, width: u32, height: u32) callconv(.C) void {
-    _ = height;
-    _ = width;
-    _ = window;
-    _ = user_data;
 }

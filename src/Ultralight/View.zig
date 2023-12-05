@@ -277,14 +277,17 @@ pub fn unlockJSContext(self: View) void {
 ///
 /// Evaluate a string of JavaScript and return result.
 ///
-pub fn evaluateScript(self: View, js_string: []const u8, exception: ?*c.ULString) []const u8 {
-    return getString(
-        c.ulViewEvaluateScript(
-            self.ptr,
-            c.ulCreateStringUTF8(js_string.ptr, js_string.len),
-            exception,
-        ),
-    );
+pub fn evaluateScript(self: View, js: []const u8) !void {
+    var exception_string: c.ULString = null;
+
+    const js_string = c.ulCreateStringUTF8(js.ptr, js.len);
+    _ = c.ulViewEvaluateScript(self.ptr, js_string, &exception_string);
+
+    const exception = getString(exception_string);
+    if (exception.len > 0) {
+        std.log.err("{s}", .{exception});
+        return error.Exception;
+    }
 }
 
 ///

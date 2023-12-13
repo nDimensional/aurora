@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) !void {
 
     const app = b.addExecutable(.{
         .name = "aurora",
-        .root_source_file = LazyPath.relative("./src/main.zig"),
+        .root_source_file = LazyPath.relative("./app/main.zig"),
         .optimize = .Debug,
         .target = target,
     });

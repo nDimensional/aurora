@@ -5,3 +5,4 @@ SDK/
 
 node_modules/
 dist/
+.env

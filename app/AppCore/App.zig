@@ -8,6 +8,12 @@ const Settings = @import("Settings.zig");
 
 const App = @This();
 
+pub const Callbacks = struct {
+    user_data: ?*anyopaque = null,
+
+    onUpdate: ?*const fn (user_data: ?*anyopaque) callconv(.C) void = null,
+};
+
 ptr: c.ULApp,
 
 ///
@@ -15,8 +21,11 @@ ptr: c.ULApp,
 ///
 pub fn create(settings: Settings, config: Config) App {
     const ptr = c.ulCreateApp(settings.ptr, config.ptr);
-    c.ulAppSetUpdateCallback(ptr, &update, null);
     return .{ .ptr = ptr };
+}
+
+pub fn attachCallbacks(self: App, callbacks: Callbacks) void {
+    if (callbacks.onUpdate) |f| c.ulAppSetUpdateCallback(self.ptr, f, callbacks.user_data);
 }
 
 ///
@@ -63,8 +72,4 @@ pub fn run(app: App) void {
 ///
 pub fn quit(app: App) void {
     c.ulAppQuit(app.ptr);
-}
-
-fn update(user_data: ?*anyopaque) callconv(.C) void {
-    _ = user_data;
 }

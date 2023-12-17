@@ -1,23 +1,29 @@
 import React, { useEffect, useRef, useState } from "react";
 
+import "./api.js";
 import { render } from "./render.js";
+import { map } from "./utils.js";
 
-// [a, b] -> [c, d]
-const map = (a: number, b: number, c: number, d: number, x: number) =>
-  ((d - c) * (x - a)) / (b - a) + c;
+const ranges = {
+  attraction: [0.0001, 0.01],
+  repulsion: [1, 100],
+  temperature: [0.01, 1],
+} as const;
+
+console.log(JSON.stringify({ attraction, repulsion, temperature }));
 
 const scale = {
   attraction: {
-    to: (value: number) => map(0, 100, 0.00001, 0.01, value),
-    from: (value: number) => map(0.00001, 0.01, 0, 100, value),
+    to: (value: number) => map(0, 100, ...ranges.attraction, value),
+    from: (value: number) => map(...ranges.attraction, 0, 100, value),
   },
   repulsion: {
-    to: (value: number) => map(0, 100, 100, 10000, value),
-    from: (value: number) => map(100, 10000, 0, 100, value),
+    to: (value: number) => map(0, 100, ...ranges.repulsion, value),
+    from: (value: number) => map(...ranges.repulsion, 0, 100, value),
   },
   temperature: {
-    to: (value: number) => map(0, 100, 0.01, 1, value),
-    from: (value: number) => map(0.01, 1, 0, 100, value),
+    to: (value: number) => map(0, 100, ...ranges.temperature, value),
+    from: (value: number) => map(...ranges.temperature, 0, 100, value),
   },
 };
 

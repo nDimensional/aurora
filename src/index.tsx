@@ -7,11 +7,8 @@ import "./api.js";
 console.log(`WOW OK NICE`);
 console.log(`${window.api}`);
 console.log(`${window.boop}`);
-console.log(`${window.setAttraction}`);
-window.setAttraction(api, 0.0007);
-// const { nodes, edges } = window;
 
-// console.log(bar);
+// const { nodes, edges } = window;
 // console.log(nodes);
 // console.log(edges);
 

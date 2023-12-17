@@ -39,6 +39,7 @@ events: [1]std.os.Kevent = undefined,
 
 pub fn init(env: *Environment) !void {
     env.store = try Store.init("graph-100.sqlite");
+    // env.store = try Store.init("graph-1000.sqlite");
     env.timer = try std.time.Timer.start();
 
     env.config = Config.create();
@@ -134,17 +135,17 @@ fn onDOMReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_f
     const view = View{ .ptr = @ptrCast(caller) };
 
     {
-        var ctx = Context.init(view);
-        defer ctx.deinit();
+        const ctx = view.lock();
+        defer view.unlock();
 
         ctx.evaluateScript("window.foo = 233232") catch @panic("ctx.evaluateScript failed");
         ctx.evaluateScript("window.bar = window") catch @panic("ctx.evaluateScript failed");
-        env.store.inject(&ctx) catch @panic("store.inject failed");
+        env.store.inject(ctx) catch @panic("store.inject failed");
 
         // Now create the API handles
         var api_class_definition: c.JSClassDefinition = c.kJSClassDefinitionEmpty;
         const api_class_ref = c.JSClassCreate(&api_class_definition);
-        const api = c.JSObjectMake(ctx.ref, api_class_ref, env);
+        const api = c.JSObjectMake(ctx.ptr, api_class_ref, env);
         const global = ctx.getGlobal();
         ctx.setProperty(global, "api", api);
         ctx.setProperty(global, "boop", ctx.makeFunction("boop", &boop));
@@ -234,7 +235,6 @@ fn boop(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, ar
     _ = ctx;
     _ = exception;
 
-    std.log.info("boop({d})", .{argc});
     if (argc == 0) {
         return null;
     }
@@ -242,15 +242,11 @@ fn boop(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, ar
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
 
-    // std.log.info("nodes.len: {d}", .{env.store.nodes.len});
-    // std.log.info("edges.len: {d}", .{env.store.edges.len});
-
     var random = env.store.prng.random();
-    for (env.store.nodes) |*node| {
-        const dx: f32 = if (random.boolean()) 1 else -1;
-        const dy: f32 = if (random.boolean()) 1 else -1;
-        node.dx = 100 * dx;
-        node.dy = 100 * dy;
+    for (0..env.store.node_count) |i| {
+        const r = random.float(f32) * std.math.tau;
+        env.store.dx[i] = 100 * std.math.cos(r);
+        env.store.dy[i] = 100 * std.math.sin(r);
     }
 
     return null;
@@ -265,7 +261,8 @@ fn setAttraction(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: 
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
-    const ctx = Context{ .ref = ref, .view = env.view.ptr };
+    const ctx = Context{ .ptr = ref };
+
     env.store.attraction = @floatCast(ctx.getNumber(args[1]));
     return null;
 }
@@ -279,8 +276,7 @@ fn setRepulsion(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: u
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
-
-    const ctx = Context{ .ref = ref, .view = env.view.ptr };
+    const ctx = Context{ .ptr = ref };
     env.store.repulsion = @floatCast(ctx.getNumber(args[1]));
     return null;
 }
@@ -294,7 +290,7 @@ fn setTemperature(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc:
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
-    const ctx = Context{ .ref = ref, .view = env.view.ptr };
+    const ctx = Context{ .ptr = ref };
     env.store.temperature = @floatCast(ctx.getNumber(args[1]));
     return null;
 }

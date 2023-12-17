@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const c = @import("../c.zig");
-
+const Context = @import("../JavaScriptCore/Context.zig");
 const utils = @import("../utils.zig");
 const getString = utils.getString;
 
@@ -256,21 +256,15 @@ pub fn resize(self: View, width: u32, height: u32) void {
 ///
 /// Acquire the page's JSContext for use with JavaScriptCore API.
 ///
-/// @note  This call locks the context for the current thread. You should call
-///        ulViewUnlockJSContext() after using the context so other worker threads can modify
-///        JavaScript state.
-///
-/// @note  The lock is recusive, it's okay to call this multiple times as long as you call
-///        ulViewUnlockJSContext() the same number of times.
-///
-pub fn lockJSContext(self: View) c.JSContextRef {
-    return c.ulViewLockJSContext(self.ptr);
+pub fn lock(self: View) Context {
+    const ptr = c.ulViewLockJSContext(self.ptr);
+    return .{ .ptr = ptr };
 }
 
 ///
 /// Unlock the page's JSContext after a previous call to ulViewLockJSContext().
 ///
-pub fn unlockJSContext(self: View) void {
+pub fn unlock(self: View) void {
     c.ulViewUnlockJSContext(self.ptr);
 }
 

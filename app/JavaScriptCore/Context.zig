@@ -1,74 +1,54 @@
 const std = @import("std");
 const c = @import("../c.zig");
 
-const View = @import("../Ultralight//View.zig");
-
 const Context = @This();
 
-view: c.ULView,
-ref: c.JSContextRef = null,
-global: c.JSObjectRef = null,
-window: c.JSObjectRef = null,
-exception: c.JSValueRef = null,
-
-pub fn init(view: View) Context {
-    var ctx: Context = undefined;
-    ctx.view = view.ptr;
-    ctx.ref = c.ulViewLockJSContext(view.ptr);
-    std.log.info("locked js context", .{});
-    ctx.global = c.JSContextGetGlobalObject(ctx.ref);
-    ctx.window = @constCast(c.JSObjectGetProperty(ctx.ref, ctx.global, c.JSStringCreateWithUTF8CString("window"), null));
-    return ctx;
-}
-
-pub fn deinit(self: Context) void {
-    c.ulViewUnlockJSContext(self.view);
-    std.log.info("unlocked js context", .{});
-}
+ptr: c.JSContextRef = null,
 
 pub fn getGlobal(ctx: Context) c.JSObjectRef {
-    return c.JSContextGetGlobalObject(ctx.ref);
+    return c.JSContextGetGlobalObject(ctx.ptr);
 }
 
-pub fn evaluateScript(ctx: *Context, js: [*:0]const u8) !void {
-    const result = c.JSEvaluateScript(ctx.ref, c.JSStringCreateWithUTF8CString(js), null, null, 0, &ctx.exception);
+pub fn evaluateScript(ctx: Context, js: [*:0]const u8) !void {
+    var exception: c.JSValueRef = null;
+    const result = c.JSEvaluateScript(ctx.ptr, c.JSStringCreateWithUTF8CString(js), null, null, 0, &exception);
     if (result == null) {
         return error.EXCEPTION;
     }
 }
 
 pub fn makeString(ctx: Context, value: [*:0]const u8) c.JSValueRef {
-    return c.JSValueMakeString(ctx.ref, c.JSStringCreateWithUTF8CString(value));
+    return c.JSValueMakeString(ctx.ptr, c.JSStringCreateWithUTF8CString(value));
 }
 
 pub fn makeBoolean(ctx: Context, value: bool) c.JSValueRef {
-    return c.JSValueMakeBoolean(ctx.ref, value);
+    return c.JSValueMakeBoolean(ctx.ptr, value);
 }
 
 pub fn makeNumber(ctx: Context, value: f64) c.JSValueRef {
-    return c.JSValueMakeNumber(ctx.ref, value);
+    return c.JSValueMakeNumber(ctx.ptr, value);
 }
 
 pub fn makeNull(ctx: Context) c.JSValueRef {
-    return c.JSValueMakeNull(ctx.ref);
+    return c.JSValueMakeNull(ctx.ptr);
 }
 
 pub fn makeUndefined(ctx: Context) c.JSValueRef {
-    return c.JSValueMakeUndefined(ctx.ref);
+    return c.JSValueMakeUndefined(ctx.ptr);
 }
 
 pub fn getNumber(ctx: Context, value: c.JSValueRef) f64 {
-    return c.JSValueToNumber(ctx.ref, value, null);
+    return c.JSValueToNumber(ctx.ptr, value, null);
 }
 
 pub fn getBoolean(ctx: Context, value: c.JSValueRef) f64 {
-    return c.JSValueToBoolean(ctx.ref, value);
+    return c.JSValueToBoolean(ctx.ptr, value);
 }
 
-pub fn setProperty(ctx: *Context, object: c.JSObjectRef, property: [*:0]const u8, value: c.JSValueRef) void {
-    ctx.exception = null;
-    c.JSObjectSetProperty(ctx.ref, object, c.JSStringCreateWithUTF8CString(property), value, 0, &ctx.exception);
-    if (ctx.exception != null) {
+pub fn setProperty(ctx: Context, object: c.JSObjectRef, property: [*:0]const u8, value: c.JSValueRef) void {
+    var exception: c.JSValueRef = null;
+    c.JSObjectSetProperty(ctx.ptr, object, c.JSStringCreateWithUTF8CString(property), value, 0, &exception);
+    if (exception != null) {
         std.log.err("setProperty failed", .{});
     }
 }
@@ -82,9 +62,9 @@ pub const Function = fn (
     exception: ?*c.JSValueRef,
 ) callconv(.C) c.JSValueRef;
 
-pub fn makeFunction(ctx: *Context, name: [*:0]const u8, callback: *const Function) c.JSObjectRef {
+pub fn makeFunction(ctx: Context, name: [*:0]const u8, callback: *const Function) c.JSObjectRef {
     return c.JSObjectMakeFunctionWithCallback(
-        ctx.ref,
+        ctx.ptr,
         c.JSStringCreateWithUTF8CString(name),
         @ptrCast(callback),
     );
@@ -120,10 +100,12 @@ pub fn makeFunction(ctx: *Context, name: [*:0]const u8, callback: *const Functio
 //     };
 // }
 
-pub fn makeTypedArray(ctx: *Context, comptime T: type, array: []const T) c.JSObjectRef {
-    const value = c.JSObjectMakeTypedArrayWithBytesNoCopy(ctx.ref, getArrayType(T), array.ptr, @sizeOf(T) * array.len, null, null, &ctx.exception);
+pub fn makeTypedArray(ctx: Context, comptime T: type, array: []T) !c.JSObjectRef {
+    var exception: c.JSValueRef = null;
+    const value = c.JSObjectMakeTypedArrayWithBytesNoCopy(ctx.ptr, getArrayType(T), array.ptr, @sizeOf(T) * array.len, null, null, &exception);
     if (value == null) {
-        std.log.err("makeTypedArray failed", .{});
+        std.log.err("JSObjectMakeTypedArrayWithBytesNoCopy", .{});
+        return error.Exception;
     }
 
     return value;

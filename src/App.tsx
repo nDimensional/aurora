@@ -1,121 +1,87 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 
 import "./api.js";
-import { render } from "./render.js";
+import { Canvas } from "./Canvas.js";
 import { map } from "./utils.js";
 
 const ranges = {
-  attraction: [0.0001, 0.01],
-  repulsion: [1, 100],
-  temperature: [0.01, 1],
+	attraction: [0.0001, 0.01],
+	repulsion: [1, 100],
+	temperature: [0.00001, 0.1],
 } as const;
 
-console.log(JSON.stringify({ attraction, repulsion, temperature }));
-
 const scale = {
-  attraction: {
-    to: (value: number) => map(0, 100, ...ranges.attraction, value),
-    from: (value: number) => map(...ranges.attraction, 0, 100, value),
-  },
-  repulsion: {
-    to: (value: number) => map(0, 100, ...ranges.repulsion, value),
-    from: (value: number) => map(...ranges.repulsion, 0, 100, value),
-  },
-  temperature: {
-    to: (value: number) => map(0, 100, ...ranges.temperature, value),
-    from: (value: number) => map(...ranges.temperature, 0, 100, value),
-  },
+	attraction: {
+		to: (value: number) => map(0, 100, ...ranges.attraction, value),
+		from: (value: number) => map(...ranges.attraction, 0, 100, value),
+	},
+	repulsion: {
+		to: (value: number) => map(0, 100, ...ranges.repulsion, value),
+		from: (value: number) => map(...ranges.repulsion, 0, 100, value),
+	},
+	temperature: {
+		to: (value: number) => map(0, 100, ...ranges.temperature, value),
+		from: (value: number) => map(...ranges.temperature, 0, 100, value),
+	},
 };
 
 export const App: React.FC<{}> = ({}) => {
-  const ref = useRef<HTMLCanvasElement | null>(null);
+	const handleSave = useCallback(() => {
+		window.save(api);
+	}, []);
 
-  useEffect(() => {
-    if (ref.current !== null) {
-      ref.current.addEventListener("click", () => boop(api));
+	const handleTick = useCallback(() => {
+		window.tick(api);
+	}, []);
 
-      function animate() {
-        render(ref.current!);
-        requestAnimationFrame(animate);
-      }
+	const [attraction, setAttractionScale] = useState(scale.attraction.from(window.attraction));
 
-      render(ref.current);
-      requestAnimationFrame(animate);
-    }
-  }, []);
+	const [repulsion, setRepulsionScale] = useState(scale.repulsion.from(window.repulsion));
 
-  const [attraction, setAttractionScale] = useState(
-    scale.attraction.from(window.attraction)
-  );
+	const [temperature, setTemperatureScale] = useState(scale.temperature.from(window.temperature));
 
-  const [repulsion, setRepulsionScale] = useState(
-    scale.repulsion.from(window.repulsion)
-  );
+	const handleAttractionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+		const attraction = event.target.valueAsNumber;
+		setAttractionScale(attraction);
+		window.setAttraction(api, scale.attraction.to(attraction));
+	}, []);
 
-  const [temperature, setTemperatureScale] = useState(
-    scale.temperature.from(window.temperature)
-  );
+	const handleRepulsionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+		const repulsion = event.target.valueAsNumber;
+		setRepulsionScale(repulsion);
+		window.setRepulsion(api, scale.repulsion.to(repulsion));
+	}, []);
 
-  return (
-    <div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
-      <div
-        style={{ display: "flex", flexDirection: "column", alignItems: "end" }}
-      >
-        <div>
-          <label style={{ flex: 1 }}>Attraction: </label>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={attraction}
-            onChange={(e) => {
-              const attraction = e.target.valueAsNumber;
-              setAttractionScale(attraction);
-              window.setAttraction(api, scale.attraction.to(attraction));
-            }}
-          />
-        </div>
-        <code>{scale.attraction.to(attraction).toPrecision(4)}</code>
-        <div>
-          <label>Repulsion: </label>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={repulsion}
-            onChange={(e) => {
-              const repulsion = e.target.valueAsNumber;
-              setRepulsionScale(repulsion);
-              window.setRepulsion(api, scale.repulsion.to(repulsion));
-            }}
-          />
-        </div>
-        <code>{scale.repulsion.to(repulsion).toPrecision(4)}</code>
-        <div>
-          <label>Temperature: </label>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={temperature}
-            onChange={(e) => {
-              const temperature = e.target.valueAsNumber;
-              setTemperatureScale(temperature);
-              window.setTemperature(api, scale.temperature.to(temperature));
-            }}
-          />
-        </div>
-        <code>{scale.attraction.to(temperature).toPrecision(4)}</code>
-      </div>
-      <canvas
-        width={720}
-        height={720}
-        ref={ref}
-        style={{ border: "solid black" }}
-      ></canvas>
-    </div>
-  );
+	const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+		const temperature = event.target.valueAsNumber;
+		setTemperatureScale(temperature);
+		window.setTemperature(api, scale.temperature.to(temperature));
+	}, []);
+
+	return (
+		<div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
+			<div style={{ display: "flex", flexDirection: "column", alignItems: "end" }}>
+				<div>
+					<label>Attraction: </label>
+					<input type="range" min="0" max="100" step="1" value={attraction} onChange={handleAttractionChange} />
+				</div>
+				<code>{scale.attraction.to(attraction).toPrecision(4)}</code>
+				<div>
+					<label>Repulsion: </label>
+					<input type="range" min="0" max="100" step="1" value={repulsion} onChange={handleRepulsionChange} />
+				</div>
+				<code>{scale.repulsion.to(repulsion).toPrecision(4)}</code>
+				<div>
+					<label>Temperature: </label>
+					<input type="range" min="0" max="100" step="1" value={temperature} onChange={handleTemperatureChange} />
+				</div>
+				<code>{scale.attraction.to(temperature).toPrecision(4)}</code>
+				<div style={{ marginTop: "1em", display: "flex", gap: "1em" }}>
+					<button onClick={handleTick}>Tick</button>
+					<button onClick={handleSave}>Save</button>
+				</div>
+			</div>
+			<Canvas />
+		</div>
+	);
 };

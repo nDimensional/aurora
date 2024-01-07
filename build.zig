@@ -8,17 +8,16 @@ pub fn build(b: *std.Build) !void {
     const app = b.addExecutable(.{
         .name = "aurora",
         .root_source_file = LazyPath.relative("./app/main.zig"),
-        .optimize = .Debug,
-        .target = target,
-    });
-
-    const sqlite = b.dependency("sqlite", .{
         .target = target,
         .optimize = optimize,
     });
 
-    app.addModule("sqlite", sqlite.module("sqlite"));
-    app.linkLibrary(sqlite.artifact("sqlite"));
+    const sqlite = b.dependency("sqlite", .{
+        // .target = target,
+        // .optimize = optimize,
+    });
+
+    app.root_module.addImport("sqlite", sqlite.module("sqlite"));
 
     app.addRPath(LazyPath.relative("SDK/bin"));
     app.addLibraryPath(LazyPath.relative("SDK/bin"));

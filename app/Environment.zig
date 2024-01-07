@@ -12,7 +12,7 @@ const Overlay = @import("AppCore/Overlay.zig");
 const Settings = @import("AppCore/Settings.zig");
 const Context = @import("JavaScriptCore/Context.zig");
 
-const Store = @import("Store.zig");
+// const Store = @import("Store.zig");
 
 const File = @import("File.zig");
 const utils = @import("utils.zig");
@@ -29,7 +29,7 @@ overlay: Overlay,
 view: View,
 
 html: File,
-store: Store,
+// store: Store,
 timer: std.time.Timer,
 
 fd: std.os.fd_t,
@@ -38,7 +38,7 @@ changes: [1]std.os.Kevent = undefined,
 events: [1]std.os.Kevent = undefined,
 
 pub fn init(env: *Environment) !void {
-    env.store = try Store.init("graph-100.sqlite");
+    // env.store = try Store.init("graph-100.sqlite");
     // env.store = try Store.init("graph-1000.sqlite");
     env.timer = try std.time.Timer.start();
 
@@ -63,6 +63,7 @@ pub fn init(env: *Environment) !void {
     env.view = env.overlay.getView();
     env.view.attachCallbacks(.{
         .user_data = env,
+        .onWindowObjectReady = &onWindowObjectReady,
         .onDOMReady = &onDOMReady,
         .onConsoleMessage = &onConsoleMessage,
     });
@@ -125,22 +126,24 @@ pub fn poll(self: *Environment) !?std.os.Kevent {
     }
 }
 
-fn onDOMReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_frame: bool, url: c.ULString) callconv(.C) void {
-    _ = url;
-    _ = is_main_frame;
+fn onWindowObjectReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_frame: bool, url: c.ULString) callconv(.C) void {
+    _ = caller;
     _ = frame_id;
+    _ = is_main_frame;
+    _ = url;
+
+    std.log.info("onWindowObjectReady", .{});
 
     const env: *Environment = @alignCast(@ptrCast(user_data));
-
-    const view = View{ .ptr = @ptrCast(caller) };
+    // const view = View{ .ptr = @ptrCast(caller) };
 
     {
-        const ctx = view.lock();
-        defer view.unlock();
+        const ctx = env.view.lock();
+        defer env.view.unlock();
 
         ctx.evaluateScript("window.foo = 233232") catch @panic("ctx.evaluateScript failed");
         ctx.evaluateScript("window.bar = window") catch @panic("ctx.evaluateScript failed");
-        env.store.inject(ctx) catch @panic("store.inject failed");
+        // env.store.inject(ctx) catch @panic("store.inject failed");
 
         // Now create the API handles
         var api_class_definition: c.JSClassDefinition = c.kJSClassDefinitionEmpty;
@@ -149,15 +152,59 @@ fn onDOMReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_f
         const global = ctx.getGlobal();
         ctx.setProperty(global, "api", api);
         ctx.setProperty(global, "boop", ctx.makeFunction("boop", &boop));
+        ctx.setProperty(global, "tick", ctx.makeFunction("tick", &tick));
+        ctx.setProperty(global, "save", ctx.makeFunction("save", &save));
         ctx.setProperty(global, "setAttraction", ctx.makeFunction("setAttraction", &setAttraction));
         ctx.setProperty(global, "setRepulsion", ctx.makeFunction("setRepulsion", &setRepulsion));
         ctx.setProperty(global, "setTemperature", ctx.makeFunction("setTemperature", &setTemperature));
     }
 
+    std.log.info("onWindowObjectReady (exit)", .{});
+}
+
+fn onDOMReady(user_data: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_frame: bool, url: c.ULString) callconv(.C) void {
+    _ = caller;
+    _ = url;
+    _ = is_main_frame;
+    _ = frame_id;
+
+    std.log.info("onDOMReady", .{});
+
+    const env: *Environment = @alignCast(@ptrCast(user_data));
+
+    // const view = View{ .ptr = @ptrCast(caller) };
+
+    // {
+    //     const ctx = view.lock();
+    //     defer view.unlock();
+
+    //     ctx.evaluateScript("window.foo = 233232") catch @panic("ctx.evaluateScript failed");
+    //     ctx.evaluateScript("window.bar = window") catch @panic("ctx.evaluateScript failed");
+    //     env.store.inject(ctx) catch @panic("store.inject failed");
+
+    //     // Now create the API handles
+    //     var api_class_definition: c.JSClassDefinition = c.kJSClassDefinitionEmpty;
+    //     const api_class_ref = c.JSClassCreate(&api_class_definition);
+    //     const api = c.JSObjectMake(ctx.ptr, api_class_ref, env);
+    //     const global = ctx.getGlobal();
+    //     ctx.setProperty(global, "api", api);
+    //     ctx.setProperty(global, "boop", ctx.makeFunction("boop", &boop));
+    //     ctx.setProperty(global, "tick", ctx.makeFunction("tick", &tick));
+    //     ctx.setProperty(global, "save", ctx.makeFunction("save", &save));
+    //     ctx.setProperty(global, "setAttraction", ctx.makeFunction("setAttraction", &setAttraction));
+    //     ctx.setProperty(global, "setRepulsion", ctx.makeFunction("setRepulsion", &setRepulsion));
+    //     ctx.setProperty(global, "setTemperature", ctx.makeFunction("setTemperature", &setTemperature));
+    // }
+
     const js = File.init("dist/index.js") catch @panic("failed to open file");
     defer js.deinit();
 
-    view.evaluateScript(js.data) catch return;
+    env.view.evaluateScript(js.data) catch |err| {
+        std.log.err("failed to evaluate script: {any}", .{err});
+        return;
+    };
+
+    std.log.info("onDOMReady (exit)", .{});
 }
 
 fn onConsoleMessage(
@@ -209,6 +256,8 @@ fn onWindowResize(user_data: ?*anyopaque, caller: c.ULWindow, width: u32, height
 fn onUpdate(user_data: ?*anyopaque) callconv(.C) void {
     const env: *Environment = @alignCast(@ptrCast(user_data));
 
+    // std.log.info("onUpdate", .{});
+
     // Poll
     var result = env.poll() catch return;
     while (result) |event| {
@@ -221,14 +270,7 @@ fn onUpdate(user_data: ?*anyopaque) callconv(.C) void {
         result = env.poll() catch return;
     }
 
-    env.store.tick() catch return;
-    // const a = env.timer.lap();
-    // std.log.info("lap in {d}ns", .{a});
-    // for (0..50) |_| {
-    //     env.store.tick() catch return;
-    // }
-    // const t = env.timer.read();
-    // std.log.info("50 ticks in {d}ns", .{t});
+    // env.store.tick() catch return;
 }
 
 fn boop(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, args: [*]c.JSValueRef, exception: ?*c.JSValueRef) callconv(.C) c.JSValueRef {
@@ -241,13 +283,56 @@ fn boop(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, ar
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
 
-    var random = env.store.prng.random();
-    for (0..env.store.node_count) |i| {
-        const r = random.float(f32) * std.math.tau;
-        env.store.dx[i] = 100 * std.math.cos(r);
-        env.store.dy[i] = 100 * std.math.sin(r);
+    std.log.info("boop()", .{});
+
+    // var random = env.store.prng.random();
+    // for (0..env.store.node_count) |i| {
+    //     const r = random.float(f32) * std.math.tau;
+    //     env.store.dx[i] = 100 * std.math.cos(r);
+    //     env.store.dy[i] = 100 * std.math.sin(r);
+    // }
+
+    return null;
+}
+
+fn tick(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, args: [*]c.JSValueRef, exception: ?*c.JSValueRef) callconv(.C) c.JSValueRef {
+    _ = ctx;
+    _ = exception;
+
+    if (argc == 0) {
+        return null;
     }
+
+    const api = args[0];
+    const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
+
+    std.log.info("tick()", .{});
+    // env.store.tick() catch {
+    //     std.log.err("env.store.tick()", .{});
+    // };
+
+    return null;
+}
+
+fn save(ctx: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: usize, args: [*]c.JSValueRef, exception: ?*c.JSValueRef) callconv(.C) c.JSValueRef {
+    _ = ctx;
+    _ = exception;
+
+    if (argc == 0) {
+        return null;
+    }
+
+    const api = args[0];
+    const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
+
+    std.log.info("save()", .{});
+    // env.store.save() catch |err| {
+    //     std.log.err("env.store.save({any})", .{err});
+    // };
 
     return null;
 }
@@ -261,9 +346,11 @@ fn setAttraction(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: 
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
     const ctx = Context{ .ptr = ref };
+    _ = ctx;
 
-    env.store.attraction = @floatCast(ctx.getNumber(args[1]));
+    // env.store.attraction = @floatCast(ctx.getNumber(args[1]));
     return null;
 }
 
@@ -276,8 +363,10 @@ fn setRepulsion(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc: u
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
     const ctx = Context{ .ptr = ref };
-    env.store.repulsion = @floatCast(ctx.getNumber(args[1]));
+    _ = ctx;
+    // env.store.repulsion = @floatCast(ctx.getNumber(args[1]));
     return null;
 }
 
@@ -290,7 +379,9 @@ fn setTemperature(ref: c.JSContextRef, _: c.JSObjectRef, _: c.JSObjectRef, argc:
 
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
+    _ = env;
     const ctx = Context{ .ptr = ref };
-    env.store.temperature = @floatCast(ctx.getNumber(args[1]));
+    _ = ctx;
+    // env.store.temperature = @floatCast(ctx.getNumber(args[1]));
     return null;
 }

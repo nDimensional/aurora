@@ -11,10 +11,8 @@
     },
     .dependencies = .{
         .sqlite = .{
-            // .url = "https://github.com/vrischmann/zig-sqlite/archive/63fbc664093f282743a76a89d43e69a20905ca90.tar.gz",
-            // .hash = "1220b56a421cf352ec102d1952d6c52d9f8be062511d707e63138bf3263621971f51",
-            .url = "https://github.com/vrischmann/zig-sqlite/archive/3d8e617c43d047b87bcbf74e9b6d26caf9f3f4f0.tar.gz",
-            .hash = "1220f246e113cc7aa245f681d8c5b57f87af391b199cc0eb8eca42c3b697c2664677",
+            .url = "https://github.com/nDimensional/zig-sqlite/archive/847e57a54172632fa32f41684c709af4893d9969.tar.gz",
+            .hash = "1220780d75adafea6234ec6dcebabe89cefc07dcce8cad4a691945df0451ba688665",
         },
     },
 }

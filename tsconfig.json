@@ -4,6 +4,7 @@
 		"target": "ES2015",
 		"esModuleInterop": true,
 		"jsx": "react",
+		"module": "NodeNext",
 		"moduleResolution": "NodeNext"
 	}
 }

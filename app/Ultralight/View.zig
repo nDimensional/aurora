@@ -29,137 +29,369 @@ pub const ViewConfig = struct {
     }
 };
 
-pub const ViewCallbacks = struct {
-    user_data: ?*anyopaque = null,
-
-    onChangeTitle: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        title: c.ULString,
-    ) callconv(.C) void = null,
-
-    onChangeURL: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        url: c.ULString,
-    ) callconv(.C) void = null,
-
-    onChangeTooltip: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        tooltip: c.ULString,
-    ) callconv(.C) void = null,
-
-    onChangeCursor: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        cursor: c.ULCursor,
-    ) callconv(.C) void = null,
-
-    onConsoleMessage: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        source: c.ULMessageSource,
-        level: c.ULMessageLevel,
-        message: c.ULString,
-        line_number: u32,
-        column_number: u32,
-        source_id: c.ULString,
-    ) callconv(.C) void = null,
-
-    onCreateChildView: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        opener_url: c.ULString,
-        target_url: c.ULString,
-        is_popup: bool,
-        popup_rect: c.ULIntRect,
-    ) callconv(.C) c.ULView = null,
-
-    onCreateInspectorView: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        is_local: bool,
-        inspected_url: c.ULString,
-    ) callconv(.C) c.ULView = null,
-
-    onBeginLoading: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        frame_id: u64,
-        is_main_frame: bool,
-        url: c.ULString,
-    ) callconv(.C) void = null,
-
-    onFinishLoading: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        frame_id: u64,
-        is_main_frame: bool,
-        url: c.ULString,
-    ) callconv(.C) void = null,
-
-    onFailLoading: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        frame_id: u64,
-        is_main_frame: bool,
-        url: c.ULString,
-        description: c.ULString,
-        error_domain: c.ULString,
-        error_code: i32,
-    ) callconv(.C) void = null,
-
-    onDOMReady: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        frame_id: u64,
-        is_main_frame: bool,
-        url: c.ULString,
-    ) callconv(.C) void = null,
-
-    onWindowObjectReady: ?*const fn (
-        user_data: ?*anyopaque,
-        caller: c.ULView,
-        frame_id: u64,
-        is_main_frame: bool,
-        url: c.ULString,
-    ) callconv(.C) void = null,
-};
-
 ///
 /// Create a View with certain size (in pixels).
 ///
 /// @note  You can pass null to 'session' to use the default session.
 ///
-pub fn create(
-    renderer: Renderer,
-    width: u32,
-    height: u32,
-    view_config: ViewConfig,
-    session: c.ULSession,
-    display_id: u32,
-    callbacks: ViewCallbacks,
-) View {
+pub fn create(renderer: Renderer, width: u32, height: u32, view_config: ViewConfig, session: c.ULSession, display_id: u32) View {
     const ptr = c.ulCreateView(renderer.ptr, width, height, view_config.ptr, session, display_id);
     const view = View{ .ptr = ptr };
-    view.attachCallbacks(callbacks);
     return view;
 }
 
-pub fn attachCallbacks(self: View, cb: ViewCallbacks) void {
-    if (cb.onChangeURL) |f| c.ulViewSetChangeURLCallback(self.ptr, f, cb.user_data);
-    if (cb.onChangeTitle) |f| c.ulViewSetChangeTitleCallback(self.ptr, f, cb.user_data);
-    if (cb.onChangeTooltip) |f| c.ulViewSetChangeTooltipCallback(self.ptr, f, cb.user_data);
-    if (cb.onChangeCursor) |f| c.ulViewSetChangeCursorCallback(self.ptr, f, cb.user_data);
-    if (cb.onConsoleMessage) |f| c.ulViewSetAddConsoleMessageCallback(self.ptr, f, cb.user_data);
-    if (cb.onCreateChildView) |f| c.ulViewSetCreateChildViewCallback(self.ptr, f, cb.user_data);
-    if (cb.onCreateInspectorView) |f| c.ulViewSetCreateInspectorViewCallback(self.ptr, f, cb.user_data);
-    if (cb.onBeginLoading) |f| c.ulViewSetBeginLoadingCallback(self.ptr, f, cb.user_data);
-    if (cb.onFinishLoading) |f| c.ulViewSetFinishLoadingCallback(self.ptr, f, cb.user_data);
-    if (cb.onFailLoading) |f| c.ulViewSetFailLoadingCallback(self.ptr, f, cb.user_data);
-    if (cb.onWindowObjectReady) |f| c.ulViewSetWindowObjectReadyCallback(self.ptr, f, cb.user_data);
-    if (cb.onDOMReady) |f| c.ulViewSetDOMReadyCallback(self.ptr, f, cb.user_data);
+pub const ChangeURLEvent = struct { view: View, title: []const u8 };
+
+pub fn setChangeURLCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: ChangeURLEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(user_data_ptr: ?*anyopaque, caller: c.ULView, title: c.ULString) callconv(.C) void {
+            const event = ChangeURLEvent{ .view = View{ .ptr = caller }, .title = getString(title) };
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetChangeURLCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const ChangeTitleEvent = struct { view: View, title: []const u8 };
+
+pub fn setChangeTitleCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: ChangeTitleEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(user_data_ptr: ?*anyopaque, caller: c.ULView, title: c.ULString) callconv(.C) void {
+            const event = ChangeTitleEvent{ .view = View{ .ptr = caller }, .title = getString(title) };
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetChangeTitleCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const ChangeTooltipEvent = struct { view: View, tooltip: []const u8 };
+
+pub fn setChangeTooltipCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: ChangeTooltipEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(user_data_ptr: ?*anyopaque, caller: c.ULView, tooltip: c.ULString) callconv(.C) void {
+            const event = ChangeTooltipEvent{ .view = View{ .ptr = caller }, .tooltip = getString(tooltip) };
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetChangeTooltipCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const ChangeCursorEvent = struct { view: View, cursor: u32 };
+
+pub fn setChangeCursorCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: ChangeCursorEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(user_data_ptr: ?*anyopaque, caller: c.ULView, cursor: c.ULCursor) callconv(.C) void {
+            const event = ChangeCursorEvent{ .view = View{ .ptr = caller }, .cursor = cursor };
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetChangeCursorCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const ConsoleMessageEvent = struct {
+    view: View,
+    source: u32,
+    level: u32,
+    message: []const u8,
+    line_number: u32,
+    column_number: u32,
+    source_id: []const u8,
+};
+
+pub fn setConsoleMessageCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: ConsoleMessageEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            source: c.ULMessageSource,
+            level: c.ULMessageLevel,
+            message: c.ULString,
+            line_number: u32,
+            column_number: u32,
+            source_id: c.ULString,
+        ) callconv(.C) void {
+            const event = ConsoleMessageEvent{
+                .view = View{ .ptr = caller },
+                .source = source,
+                .level = level,
+                .message = getString(message),
+                .line_number = line_number,
+                .column_number = column_number,
+                .source_id = getString(source_id),
+            };
+
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetAddConsoleMessageCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const CreateChildViewEvent = struct {
+    view: View,
+    opener_url: []const u8,
+    target_url: []const u8,
+    is_popup: bool,
+    popup_rect: struct { left: i32, right: i32, top: i32, bottom: i32 },
+};
+
+pub fn setCreateChildViewCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: CreateChildViewEvent) ?View,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            opener_url: c.ULString,
+            target_url: c.ULString,
+            is_popup: bool,
+            popup_rect: c.ULIntRect,
+        ) callconv(.C) c.ULView {
+            const event = CreateChildViewEvent{
+                .view = View{ .ptr = caller },
+                .opener_url = getString(opener_url),
+                .target_url = getString(target_url),
+                .is_popup = is_popup,
+                .popup_rect = .{ .top = popup_rect.top, .bottom = popup_rect.bottom, .left = popup_rect.left, .right = popup_rect.right },
+            };
+
+            if (callback(@alignCast(@ptrCast(user_data_ptr)), event)) |view| {
+                return view.ptr;
+            } else {
+                return null;
+            }
+        }
+    };
+
+    c.ulViewSetCreateChildViewCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const CreateInspectorViewEvent = struct {
+    view: View,
+    is_local: bool,
+    inspected_url: []const u8,
+};
+
+pub fn setCreateInspectorViewCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: CreateInspectorViewEvent) ?View,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            is_local: bool,
+            inspected_url: c.ULString,
+        ) callconv(.C) c.ULView {
+            const event = CreateInspectorViewEvent{
+                .view = View{ .ptr = caller },
+                .is_local = is_local,
+                .inspected_url = getString(inspected_url),
+            };
+
+            if (callback(@alignCast(@ptrCast(user_data_ptr)), event)) |view| {
+                return view.ptr;
+            } else {
+                return null;
+            }
+        }
+    };
+
+    c.ulViewSetCreateInspectorViewCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const BeginLoadingEvent = struct {
+    view: View,
+    frame_id: u64,
+    is_main_frame: bool,
+    url: []const u8,
+};
+
+pub fn setBeginLoadingCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: BeginLoadingEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            frame_id: u64,
+            is_main_frame: bool,
+            url: c.ULString,
+        ) callconv(.C) void {
+            const event = BeginLoadingEvent{
+                .view = View{ .ptr = caller },
+                .frame_id = frame_id,
+                .is_main_frame = is_main_frame,
+                .url = getString(url),
+            };
+
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetBeginLoadingCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const FinishLoadingEvent = struct {
+    view: View,
+    frame_id: u64,
+    is_main_frame: bool,
+    url: []const u8,
+};
+
+pub fn setFinishLoadingCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: FinishLoadingEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            frame_id: u64,
+            is_main_frame: bool,
+            url: c.ULString,
+        ) callconv(.C) void {
+            const event = FinishLoadingEvent{
+                .view = View{ .ptr = caller },
+                .frame_id = frame_id,
+                .is_main_frame = is_main_frame,
+                .url = getString(url),
+            };
+
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetFinishLoadingCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const FailLoadingEvent = struct {
+    view: View,
+    frame_id: u64,
+    is_main_frame: bool,
+    url: []const u8,
+    description: []const u8,
+    error_domain: []const u8,
+    error_code: i32,
+};
+
+pub fn setFailLoadingCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: FailLoadingEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(
+            user_data_ptr: ?*anyopaque,
+            caller: c.ULView,
+            frame_id: u64,
+            is_main_frame: bool,
+            url: c.ULString,
+            description: c.ULString,
+            error_domain: c.ULString,
+            error_code: i32,
+        ) callconv(.C) void {
+            const event = FailLoadingEvent{
+                .view = View{ .ptr = caller },
+                .frame_id = frame_id,
+                .is_main_frame = is_main_frame,
+                .url = getString(url),
+                .description = getString(description),
+                .error_domain = getString(error_domain),
+                .error_code = error_code,
+            };
+
+            callback(@alignCast(@ptrCast(user_data_ptr)), event);
+        }
+    };
+
+    c.ulViewSetFailLoadingCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const WindowObjectReadyEvent = struct {
+    view: View,
+    frame_id: u64,
+    is_main_frame: bool,
+    url: []const u8,
+};
+
+pub fn setWindowObjectReadyCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: WindowObjectReadyEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(ptr: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_frame: bool, url: c.ULString) callconv(.C) void {
+            const event = WindowObjectReadyEvent{ .view = View{ .ptr = caller }, .frame_id = frame_id, .is_main_frame = is_main_frame, .url = getString(url) };
+            callback(@alignCast(@ptrCast(ptr)), event);
+        }
+    };
+
+    c.ulViewSetWindowObjectReadyCallback(self.ptr, &Dispatch.exec, user_data);
+}
+
+pub const DOMReadyEvent = struct {
+    view: View,
+    frame_id: u64,
+    is_main_frame: bool,
+    url: []const u8,
+};
+
+pub fn setDOMReadyCallback(
+    self: View,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, event: DOMReadyEvent) void,
+) void {
+    const Dispatch = struct {
+        fn exec(ptr: ?*anyopaque, caller: c.ULView, frame_id: u64, is_main_frame: bool, url: c.ULString) callconv(.C) void {
+            const event = DOMReadyEvent{ .view = View{ .ptr = caller }, .frame_id = frame_id, .is_main_frame = is_main_frame, .url = getString(url) };
+            callback(@alignCast(@ptrCast(ptr)), event);
+        }
+    };
+
+    c.ulViewSetDOMReadyCallback(self.ptr, &Dispatch.exec, user_data);
 }
 
 ///

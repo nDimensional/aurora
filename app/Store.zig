@@ -8,13 +8,19 @@ const c = @import("c.zig");
 const utils = @import("utils.zig");
 const getString = utils.getString;
 
-const allocator = std.heap.c_allocator;
-
 const Store = @This();
 
-// arena: std.heap.ArenaAllocator = undefined,
+pub const AreaParams = struct { minX: f32, maxX: f32, minY: f32, maxY: f32 };
+pub const AreaResult = struct { idx: u32 };
+
+pub const Count = struct { count: usize };
+
+allocator: std.mem.Allocator,
 prng: std.rand.Xoshiro256 = std.rand.Xoshiro256.init(0),
-db: sqlite.Database = undefined,
+db: sqlite.Database,
+
+select_ids: sqlite.Statement(AreaParams, AreaResult),
+ids: std.ArrayList(u32),
 
 node_count: usize = 0,
 edge_count: usize = 0,
@@ -25,108 +31,131 @@ x: []f32 = undefined,
 y: []f32 = undefined,
 dx: []f32 = undefined,
 dy: []f32 = undefined,
-outgoing_degree: []u32 = undefined,
-incoming_degree: []u32 = undefined,
+incoming_degree: []f32 = undefined,
 
 attraction: f32 = 0.005,
 repulsion: f32 = 50.0,
 temperature: f32 = 0.005,
 
-pub fn init(path: [*:0]const u8) !Store {
-    var store = Store{};
-    // store.arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    store.db = try sqlite.Database.openZ(path, .{});
+pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
+    const db = try sqlite.Database.init(.{ .path = path });
+    const select_ids = try db.prepare(AreaParams, AreaResult,
+        \\ SELECT idx FROM atlas WHERE :minX <= minX AND maxX <= :maxX AND :minY < minY AND maxY <= :maxY
+    );
 
-    // const allocator = store.arena.allocator();
+    var store = Store{
+        .allocator = allocator,
+        .db = db,
 
-    // {
-    //     const nodes = try store.selectAll(u32, "SELECT id FROM atlas WHERE minX > 200 and maxX < 300 and minY > 500 and maxY < 600", allocator);
-    //     defer allocator.free(nodes);
-
-    //     std.log.info("GOT NODES: {any}", .{nodes});
-    // }
+        .select_ids = select_ids,
+        .ids = std.ArrayList(u32).init(allocator),
+    };
 
     {
-        const Edge = struct { sourcex: u32, targetx: u32 };
-        const q = try sqlite.Query(struct {}, Edge).init(store.db, "SELECT sourcex, targetx FROM edges");
-        defer q.deinit();
+        const count_edges = try store.db.prepare(struct {}, Count, "SELECT count(*) as count FROM edges");
+        defer count_edges.deinit();
 
-        var source = std.ArrayList(u32).init(allocator);
-        defer source.deinit();
-
-        var target = std.ArrayList(u32).init(allocator);
-        defer target.deinit();
-
-        try q.bind(.{});
-        while (try q.step()) |edge| {
-            try source.append(edge.sourcex);
-            try target.append(edge.targetx);
+        try count_edges.bind(.{});
+        if (try count_edges.step()) |result| {
+            store.edge_count = result.count;
         }
+    }
 
-        store.source = try source.toOwnedSlice();
-        store.target = try target.toOwnedSlice();
+    store.source = try allocator.alloc(u32, store.edge_count);
+    store.target = try allocator.alloc(u32, store.edge_count);
 
-        std.log.info("store.source.len: {d}", .{store.source.len});
-        std.log.info("store.target.len: {d}", .{store.target.len});
+    {
+        const Edge = struct { source: u32, target: u32 };
+        const select_edges = try store.db.prepare(struct {}, Edge, "SELECT source, target FROM edges");
+        defer select_edges.deinit();
+
+        try select_edges.bind(.{});
+        defer select_edges.reset();
+
+        var i: usize = 0;
+        while (try select_edges.step()) |edge| : (i += 1) {
+            store.source[i] = edge.source;
+            store.target[i] = edge.target;
+        }
     }
 
     {
-        const Node = struct { x: f32, y: f32, incoming_degree: u32, outgoing_degree: u32 };
-        const q = try sqlite.Query(struct {}, Node).init(store.db,
-            \\ SELECT x, y, incoming_degree, outgoing_degree FROM nodes
+        const count_nodes = try store.db.prepare(struct {}, Count, "SELECT count(*) as count FROM nodes");
+        defer count_nodes.deinit();
+
+        try count_nodes.bind(.{});
+        defer count_nodes.reset();
+
+        if (try count_nodes.step()) |result| {
+            store.node_count = result.count;
+        }
+    }
+
+    store.x = try allocator.alloc(f32, store.node_count);
+    store.y = try allocator.alloc(f32, store.node_count);
+    store.incoming_degree = try allocator.alloc(f32, store.node_count);
+
+    {
+        const Node = struct { idx: u32, x: f32, y: f32, incoming_degree: f32 };
+        const select_nodes = try store.db.prepare(struct {}, Node,
+            \\ SELECT idx, minX AS x, minY AS y, minZ AS incoming_degree FROM atlas
         );
-        defer q.deinit();
+        defer select_nodes.deinit();
 
-        var x = std.ArrayList(f32).init(allocator);
-        defer x.deinit();
-
-        var y = std.ArrayList(f32).init(allocator);
-        defer y.deinit();
-
-        var incoming_degree = std.ArrayList(u32).init(allocator);
+        var incoming_degree = std.ArrayList(f32).init(allocator);
         defer incoming_degree.deinit();
 
-        var outgoing_degree = std.ArrayList(u32).init(allocator);
-        defer outgoing_degree.deinit();
-
-        try q.bind(.{});
-        while (try q.step()) |node| {
-            try x.append(node.x);
-            try y.append(node.y);
-            try incoming_degree.append(node.incoming_degree);
-            try outgoing_degree.append(node.outgoing_degree);
+        try select_nodes.bind(.{});
+        defer select_nodes.reset();
+        while (try select_nodes.step()) |node| {
+            const i = node.idx - 1;
+            store.x[i] = node.x;
+            store.y[i] = node.y;
+            store.incoming_degree[i] = node.incoming_degree;
         }
-
-        store.x = try x.toOwnedSlice();
-        store.y = try y.toOwnedSlice();
-        store.incoming_degree = try incoming_degree.toOwnedSlice();
-        store.outgoing_degree = try outgoing_degree.toOwnedSlice();
-
-        std.log.info("store.x.len: {d}", .{store.x.len});
-        std.log.info("store.y.len: {d}", .{store.y.len});
-        std.log.info("store.incoming_degree.len: {d}", .{store.incoming_degree.len});
-        std.log.info("store.outgoing_degree.len: {d} ", .{store.outgoing_degree.len});
     }
 
-    // store.source = try store.selectAll(u32, "SELECT sourcex FROM edges", allocator);
-    // store.target = try store.selectAll(u32, "SELECT targetx FROM edges", allocator);
-    // store.x = try store.selectAll(f32, "SELECT x FROM nodes", allocator);
-    // store.y = try store.selectAll(f32, "SELECT y FROM nodes", allocator);
-    // store.incoming_degree = try store.selectAll(u32, "SELECT incoming_degree FROM nodes", allocator);
-    // store.outgoing_degree = try store.selectAll(u32, "SELECT outgoing_degree FROM nodes", allocator);
-
-    store.dx = try allocator.alloc(f32, store.x.len);
-    store.dy = try allocator.alloc(f32, store.y.len);
-
-    store.node_count = @max(store.x.len, store.y.len);
-    store.edge_count = @max(store.source.len, store.source.len);
-
+    store.dx = try allocator.alloc(f32, store.node_count);
+    store.dy = try allocator.alloc(f32, store.node_count);
     for (0..store.node_count) |i| {
         store.dx[i] = 0;
         store.dy[i] = 0;
     }
 
+    // store.randomize();
+
     return store;
+}
+
+pub fn deinit(self: *Store) void {
+    self.select_ids.deinit();
+    self.db.deinit();
+
+    self.ids.deinit();
+
+    self.allocator.free(self.source);
+    self.allocator.free(self.target);
+    self.allocator.free(self.x);
+    self.allocator.free(self.y);
+    self.allocator.free(self.incoming_degree);
+    self.allocator.free(self.dx);
+    self.allocator.free(self.dy);
+}
+
+pub fn inject(self: *Store, ctx: Context) !void {
+    const global = ctx.getGlobal();
+
+    ctx.setProperty(global, "source", try ctx.makeTypedArray(u32, self.source));
+    ctx.setProperty(global, "target", try ctx.makeTypedArray(u32, self.target));
+    ctx.setProperty(global, "x", try ctx.makeTypedArray(f32, self.x));
+    ctx.setProperty(global, "y", try ctx.makeTypedArray(f32, self.y));
+    ctx.setProperty(global, "dx", try ctx.makeTypedArray(f32, self.dx));
+    ctx.setProperty(global, "dy", try ctx.makeTypedArray(f32, self.dy));
+    ctx.setProperty(global, "incoming_degree", try ctx.makeTypedArray(f32, self.incoming_degree));
+
+    ctx.setProperty(global, "attraction", ctx.makeNumber(self.attraction));
+    ctx.setProperty(global, "repulsion", ctx.makeNumber(self.repulsion));
+    ctx.setProperty(global, "temperature", ctx.makeNumber(self.temperature));
 }
 
 fn randomize(self: *Store) void {
@@ -139,26 +168,13 @@ fn randomize(self: *Store) void {
     }
 }
 
-pub fn deinit(self: *Store) void {
-    self.arena.deinit();
-    self.db.close() catch |err| @panic(@errorName(err));
-}
-
-pub fn inject(self: *Store, ctx: Context) !void {
-    const global = ctx.getGlobal();
-
-    ctx.setProperty(global, "source", try ctx.makeTypedArray(u32, self.source));
-    ctx.setProperty(global, "target", try ctx.makeTypedArray(u32, self.target));
-    ctx.setProperty(global, "x", try ctx.makeTypedArray(f32, self.x));
-    ctx.setProperty(global, "y", try ctx.makeTypedArray(f32, self.y));
-    ctx.setProperty(global, "dx", try ctx.makeTypedArray(f32, self.dx));
-    ctx.setProperty(global, "dy", try ctx.makeTypedArray(f32, self.dy));
-    ctx.setProperty(global, "incoming_degree", try ctx.makeTypedArray(u32, self.incoming_degree));
-    ctx.setProperty(global, "outgoing_degree", try ctx.makeTypedArray(u32, self.outgoing_degree));
-
-    ctx.setProperty(global, "attraction", ctx.makeNumber(self.attraction));
-    ctx.setProperty(global, "repulsion", ctx.makeNumber(self.repulsion));
-    ctx.setProperty(global, "temperature", ctx.makeNumber(self.temperature));
+pub fn boop(self: *Store) void {
+    var random = self.prng.random();
+    for (0..self.node_count) |i| {
+        const r = random.float(f32) * std.math.tau;
+        self.dx[i] = 100 * std.math.cos(r);
+        self.dy[i] = 100 * std.math.sin(r);
+    }
 }
 
 pub fn tick(self: *Store) !void {
@@ -176,13 +192,13 @@ pub fn tick(self: *Store) !void {
     }
 
     for (0..self.node_count) |i| {
-        const i_mass: f32 = @floatFromInt(self.incoming_degree[i]);
+        const i_mass = self.incoming_degree[i];
         for (0..self.node_count) |j| {
             if (i == j) {
                 continue;
             }
 
-            const j_mass: f32 = @floatFromInt(self.incoming_degree[j]);
+            const j_mass = self.incoming_degree[j];
 
             const dx = self.x[j] - self.x[i];
             const dy = self.y[j] - self.y[i];
@@ -213,24 +229,25 @@ pub fn tick(self: *Store) !void {
 }
 
 pub fn save(self: *Store) !void {
-    const update = try sqlite.Method(struct { x: f32, y: f32, idx: u32 }).init(self.db,
-        \\ UPDATE nodes SET x = :x, y = :y WHERE idx = :idx
-    );
-
+    const Node = struct { x: f32, y: f32, idx: u32 };
+    const update = try self.db.prepare(Node, void, "UPDATE atlas SET minX = :x, maxX = :x, minY = :y, maxY = :y WHERE idx = :idx");
     defer update.deinit();
 
-    // var statement = try self.db.prepare("UPDATE nodes SET x = ?{f32}, y = ?{f32} WHERE idx = ?{u32}");
-    // defer statement.deinit();
-
     for (0..self.node_count) |i| {
-        try update.exec(.{ .x = self.x[i], .y = self.y[i], .idx = @as(u32, @intCast(i + 1)) });
-        // try update.exec(.{}, .{ self.x[i], self.y[i], @as(u32, @intCast(i + 1)) });
-        // update.reset();
+        const idx: u32 = @intCast(i + 1);
+        try update.exec(.{ .x = self.x[i], .y = self.y[i], .idx = idx });
     }
 }
 
-// fn selectAll(self: *Store, comptime T: type, comptime sql: []const u8, allocator: std.mem.Allocator) ![]T {
-//     var statement = try self.db.prepare(sql);
-//     defer statement.deinit();
-//     return try statement.all(T, allocator, .{}, .{});
-// }
+pub fn count(self: *Store, area: AreaParams) !void {
+    self.ids.shrinkRetainingCapacity(0);
+
+    try self.select_ids.bind(area);
+    defer self.select_ids.reset();
+
+    while (try self.select_ids.step()) |node| {
+        try self.ids.append(node.idx);
+    }
+
+    std.log.info("there are {d} nodes in the area", .{self.ids.items.len});
+}

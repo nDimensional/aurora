@@ -4,33 +4,25 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.js";
 import "./api.js";
 
-console.log("typeof x:", JSON.stringify(typeof window.x));
-console.log("typeof y:", JSON.stringify(typeof window.y));
-console.log("WOWJFKDLSJFKDLS");
+const main = document.querySelector("main");
 
-// // const { nodes, edges } = window;
-// // console.log(nodes);
-// // console.log(edges);
+if (main === null) {
+	throw new Error("missing main element");
+}
 
-// const main = document.querySelector("main");
+createRoot(main).render(<App />);
 
-// if (main === null) {
-// 	throw new Error("missing main element");
+// const canvas = document.querySelector("canvas");
+// if (canvas === null) {
+//   throw new Error("missing canvas element");
 // }
 
-// createRoot(main).render(<App />);
+// canvas.addEventListener("click", () => boop(api));
 
-// // const canvas = document.querySelector("canvas");
-// // if (canvas === null) {
-// //   throw new Error("missing canvas element");
-// // }
+// function animate() {
+//   // Code for updating the animation goes here
+//   render(canvas!);
+//   requestAnimationFrame(animate); // Request the next frame
+// }
 
-// // canvas.addEventListener("click", () => boop(api));
-
-// // function animate() {
-// //   // Code for updating the animation goes here
-// //   render(canvas!);
-// //   requestAnimationFrame(animate); // Request the next frame
-// // }
-
-// // requestAnimationFrame(animate); // Start the animation loop
+// requestAnimationFrame(animate); // Start the animation loop

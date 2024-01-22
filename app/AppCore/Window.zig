@@ -20,13 +20,6 @@ pub const Flags = struct {
     pub const Hidden = c.kWindowFlags_Hidden;
 };
 
-pub const Callbacks = struct {
-    user_data: ?*anyopaque = null,
-
-    onClose: ?*const fn (user_data: ?*anyopaque, window: c.ULWindow) callconv(.C) void = null,
-    onResize: ?*const fn (user_data: ?*anyopaque, window: c.ULWindow, width: u32, height: u32) callconv(.C) void = null,
-};
-
 ptr: c.ULWindow,
 
 ///
@@ -37,9 +30,36 @@ pub fn create(monitor: Monitor, width: u32, height: u32, fullscreen: bool, windo
     return .{ .ptr = ptr };
 }
 
-pub fn attachCallbacks(self: Window, callbacks: Callbacks) void {
-    if (callbacks.onClose) |f| c.ulWindowSetCloseCallback(self.ptr, f, callbacks.user_data);
-    if (callbacks.onResize) |f| c.ulWindowSetResizeCallback(self.ptr, f, callbacks.user_data);
+// pub const CloseCallback = fn (user_data: ?*anyopaque, window: c.ULWindow) callconv(.C) void;
+
+pub fn setCloseCallback(
+    self: Window,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, window: Window) void,
+) void {
+    const Callback = struct {
+        fn exec(user_data_ptr: ?*anyopaque, windpw_ptr: c.ULWindow) callconv(.C) void {
+            callback(@alignCast(@ptrCast(user_data_ptr)), Window{ .ptr = windpw_ptr });
+        }
+    };
+
+    c.ulWindowSetCloseCallback(self.ptr, &Callback.exec, user_data);
+}
+
+pub fn setResizeCallback(
+    self: Window,
+    comptime UserData: type,
+    user_data: *UserData,
+    comptime callback: *const fn (user_data: *UserData, window: Window, width: u32, height: u32) void,
+) void {
+    const Callback = struct {
+        fn exec(user_data_ptr: ?*anyopaque, windpw_ptr: c.ULWindow, width: u32, height: u32) callconv(.C) void {
+            callback(@alignCast(@ptrCast(user_data_ptr)), Window{ .ptr = windpw_ptr }, width, height);
+        }
+    };
+
+    c.ulWindowSetResizeCallback(self.ptr, &Callback.exec, user_data);
 }
 
 ///

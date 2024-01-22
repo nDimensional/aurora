@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 
-import "./api.js";
 import { render } from "./render.js";
+import "./api.js";
 
 function getScale(zoom: number) {
 	return 0.001 * (400 - zoom) + 1.001;
@@ -18,6 +18,14 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const offsetYRef = useRef(offsetY);
 	const zoomRef = useRef(zoom);
 	const framerateRef = useRef<HTMLElement | null>(null);
+
+	// const scale = getScale(zoomRef.current);
+	// const right = 360 / scale - offsetX;
+	// const left = -360 / scale - offsetX;
+	// const top = 360 / scale + offsetY;
+	// const bottom = -360 / scale + offsetY;
+	// console.log(`range: [${right}, ${left}], [${top}, ${bottom}]`);
+	// // console.log(`offsetX: ${offsetX}, offsetY: ${offsetY}, scale: ${getScale(zoom)}`);
 
 	useEffect(() => {
 		if (canvasRef.current === null) {
@@ -97,6 +105,17 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 	const handleMouseUp = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		anchor.current = null;
+		setOffsetX(offsetXRef.current);
+		setOffsetY(offsetYRef.current);
+	}, []);
+
+	const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+		const scale = getScale(zoomRef.current);
+		const right = 360 / scale - offsetXRef.current;
+		const left = -360 / scale - offsetXRef.current;
+		const top = 360 / scale + offsetYRef.current;
+		const bottom = -360 / scale + offsetYRef.current;
+		window.refresh(window.api, left, right, bottom, top);
 	}, []);
 
 	return (
@@ -112,6 +131,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 				onMouseDown={handleMouseDown}
 				onMouseMove={handleMouseMove}
 				onMouseUp={handleMouseUp}
+				onClick={handleClick}
 			></canvas>
 			<code>
 				{offsetX.toFixed(0)}, {offsetY.toFixed(0)}, {zoom}

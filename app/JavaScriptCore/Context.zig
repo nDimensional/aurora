@@ -54,51 +54,45 @@ pub fn setProperty(ctx: Context, object: c.JSObjectRef, property: [*:0]const u8,
 }
 
 pub const Function = fn (
-    ctx: c.JSContextRef,
-    function: c.JSObjectRef,
-    this: c.JSObjectRef,
-    argc: usize,
-    args: [*]c.JSValueRef,
-    exception: ?*c.JSValueRef,
-) callconv(.C) c.JSValueRef;
+    ctx: Context,
+    args: []const c.JSValueRef,
+) anyerror!c.JSValueRef;
 
-pub fn makeFunction(ctx: Context, name: [*:0]const u8, callback: *const Function) c.JSObjectRef {
+pub fn makeFunction(ctx: Context, name: [*:0]const u8, comptime callback: *const Function) c.JSObjectRef {
+    const Callback = struct {
+        fn exec(
+            ptr: c.JSContextRef,
+            _: c.JSObjectRef,
+            _: c.JSObjectRef,
+            argc: usize,
+            args: [*]c.JSValueRef,
+            exception: ?*c.JSValueRef,
+        ) callconv(.C) c.JSValueRef {
+            const ref = Context{ .ptr = ptr };
+            return callback(ref, args[0..argc]) catch |err| {
+                if (exception) |result| {
+                    result.* = ref.makeError(@errorName(err));
+                }
+
+                return null;
+            };
+        }
+    };
+
     return c.JSObjectMakeFunctionWithCallback(
         ctx.ptr,
         c.JSStringCreateWithUTF8CString(name),
-        @ptrCast(callback),
+        @ptrCast(&Callback.exec),
     );
 }
 
-// JSObjectRef JSObjectMakeTypedArrayWithBytesNoCopy(JSContextRef ctx, JSTypedArrayType arrayType, void* bytes, size_t byteLength, JSTypedArrayBytesDeallocator bytesDeallocator, void* deallocatorContext, JSValueRef* exception) JSC_API_AVAILABLE(macos(10.12), ios(10.0));
+pub fn makeError(ctx: Context, message: [*:0]const u8) c.JSObjectRef {
+    const arguments = [_]c.JSValueRef{
+        c.JSValueMakeString(ctx.ptr, c.JSStringCreateWithUTF8CString(message)),
+    };
 
-// pub fn TypedArray(comptime T: type) type {
-//     return struct {
-//         const Self = @This();
-
-//         allocator: std.mem.Allocator,
-//         elements: []T,
-//         byte_length: usize,
-
-//         pub fn init(allocator: std.mem.Allocator, elements: []T) Self {
-//             const byte_length = @sizeOf(T) * elements.len;
-//             return .{ .allocator = allocator, .elements = elements, .byte_length = byte_length };
-//         }
-
-//         pub fn deinit(self: Self) void {
-//             self.allocator.free(self.elements);
-//         }
-
-//         pub fn deallocate(bytes: ?*anyopaque, deallocator_context: ?*anyopaque) callconv(.C) void {
-//             const array: *const Self = @ptrCast(deallocator_context);
-//             if (array.elements.ptr != bytes) {
-//                 @panic("unexpected deallocator arguments");
-//             }
-
-//             array.deinit();
-//         }
-//     };
-// }
+    return c.JSObjectMakeError(ctx.ptr, 1, &arguments, null);
+}
 
 pub fn makeTypedArray(ctx: Context, comptime T: type, array: []T) !c.JSObjectRef {
     var exception: c.JSValueRef = null;
@@ -110,11 +104,6 @@ pub fn makeTypedArray(ctx: Context, comptime T: type, array: []T) !c.JSObjectRef
 
     return value;
 }
-
-// fn deallocate(bytes: ?*anyopaque, deallocator_context: ?*anyopaque) callconv(.C) void {
-//     const allocator: *const std.mem.Allocator = @ptrCast(deallocator_context);
-//     allocator.free(bytes);
-// }
 
 pub fn getArrayType(comptime T: type) c.JSTypedArrayType {
     return switch (T) {

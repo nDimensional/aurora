@@ -4,18 +4,16 @@ const LazyPath = std.Build.LazyPath;
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    _ = optimize;
 
     const app = b.addExecutable(.{
         .name = "aurora",
         .root_source_file = LazyPath.relative("./app/main.zig"),
         .target = target,
-        .optimize = optimize,
+        .optimize = .Debug,
     });
 
-    const sqlite = b.dependency("sqlite", .{
-        // .target = target,
-        // .optimize = optimize,
-    });
+    const sqlite = b.dependency("sqlite", .{ .SQLITE_ENABLE_RTREE = true });
 
     app.root_module.addImport("sqlite", sqlite.module("sqlite"));
 

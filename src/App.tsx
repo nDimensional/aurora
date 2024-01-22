@@ -1,8 +1,8 @@
 import React, { useCallback, useState } from "react";
 
-import "./api.js";
 import { Canvas } from "./Canvas.js";
 import { map } from "./utils.js";
+import "./api.js";
 
 const ranges = {
 	attraction: [0.0001, 0.01],

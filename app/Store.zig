@@ -10,7 +10,7 @@ const getString = utils.getString;
 
 const Store = @This();
 
-pub const AreaParams = struct { minX: f32, maxX: f32, minY: f32, maxY: f32 };
+pub const AreaParams = struct { minX: f32, maxX: f32, minY: f32, maxY: f32, minZ: f32 };
 pub const AreaResult = struct { idx: u32 };
 
 pub const Count = struct { count: usize };
@@ -40,7 +40,7 @@ temperature: f32 = 0.005,
 pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
     const db = try sqlite.Database.init(.{ .path = path });
     const select_ids = try db.prepare(AreaParams, AreaResult,
-        \\ SELECT idx FROM atlas WHERE :minX <= minX AND maxX <= :maxX AND :minY < minY AND maxY <= :maxY
+        \\ SELECT idx FROM atlas WHERE :minX <= minX AND maxX <= :maxX AND :minY <= minY AND maxY <= :maxY AND :minZ <= minZ
     );
 
     var store = Store{

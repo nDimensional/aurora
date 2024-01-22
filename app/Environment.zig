@@ -209,6 +209,7 @@ fn refresh(ctx: Context, args: []const c.JSValueRef) !c.JSValueRef {
         .maxX = @floatCast(ctx.getNumber(args[2])),
         .minY = @floatCast(ctx.getNumber(args[3])),
         .maxY = @floatCast(ctx.getNumber(args[4])),
+        .minZ = @floatCast(ctx.getNumber(args[5])),
     };
 
     std.log.info("refresh({any})", .{area});

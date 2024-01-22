@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
-import { render } from "./render.js";
+import { getMinZ, render } from "./render.js";
 import "./api.js";
 
 function getScale(zoom: number) {
@@ -22,29 +22,15 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const zoomRef = useRef(zoom);
 	const framerateRef = useRef<HTMLElement | null>(null);
 
-	// const scale = getScale(zoomRef.current);
-	// const right = 360 / scale - offsetX;
-	// const left = -360 / scale - offsetX;
-	// const top = 360 / scale + offsetY;
-	// const bottom = -360 / scale + offsetY;
-	// console.log(`range: [${right}, ${left}], [${top}, ${bottom}]`);
-	// // console.log(`offsetX: ${offsetX}, offsetY: ${offsetY}, scale: ${getScale(zoom)}`);
-
 	useEffect(() => {
 		if (canvasRef.current === null) {
 			return;
 		}
 
-		// canvasRef.current.addEventListener("click", () => boop(api));
-
-		// const start = performance.now();
-
 		function animate() {
 			if (canvasRef.current === null) {
 				return;
 			}
-
-			// const delay = performance.mark()
 
 			const scale = getScale(zoomRef.current);
 			render(canvasRef.current, offsetXRef.current, offsetYRef.current, scale, ids.current);
@@ -112,20 +98,12 @@ export const Canvas: React.FC<{}> = ({}) => {
 		setOffsetY(offsetYRef.current);
 	}, []);
 
-	const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-		// const scale = getScale(zoomRef.current);
-		// const right = 360 / scale - offsetXRef.current;
-		// const left = -360 / scale - offsetXRef.current;
-		// const top = 360 / scale + offsetYRef.current;
-		// const bottom = -360 / scale + offsetYRef.current;
-		// const result = window.refresh(window.api, left, right, bottom, top);
-		// console.log(`result!: ${result}`);
-	}, []);
+	const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {}, []);
 
 	const refreshIds = useDebouncedCallback(
-		(area: { minX: number; maxX: number; minY: number; maxY: number }) => {
-			ids.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY);
-			console.log(`refresh ${ids.current.length}`);
+		(area: { minX: number; maxX: number; minY: number; maxY: number; minZ: number }) => {
+			ids.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY, area.minZ);
+			console.log(`refresh ${ids.current.length} ids`);
 		},
 		100,
 		{ leading: true, maxWait: 200 }
@@ -133,13 +111,12 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 	useEffect(() => {
 		const scale = getScale(zoom);
-		const right = 360 / scale - offsetX;
-		const left = -360 / scale - offsetX;
-		const top = 360 / scale - offsetY;
-		const bottom = -360 / scale - offsetY;
-		refreshIds({ minX: left, maxX: right, minY: bottom, maxY: top });
-		// ids.current = window.refresh(window.api, left, right, bottom, top);
-		// console.log(`refresh ${ids.current.length}`);
+		const maxX = 360 / scale - offsetX;
+		const minX = -360 / scale - offsetX;
+		const maxY = 360 / scale - offsetY;
+		const minY = -360 / scale - offsetY;
+		const minZ = getMinZ(scale);
+		refreshIds({ minX, maxX, minY, maxY, minZ });
 	}, [zoom, offsetX, offsetY]);
 
 	return (

@@ -6,10 +6,15 @@ function project(coordinate: number, offset: number, scale: number): number {
 	return (coordinate + offset) * scale + 360;
 }
 
+const minRadius = 1;
+
+export const getMinZ = (scale: number) => map(1, 10, 0, 80, minRadius / scale);
+
+function getRadius(scale: number, z: number) {
+	return scale * map(0, 80, 1, 10, z);
+}
+
 export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: number, scale: number, ids: Uint32Array) {
-	// console.log(`rendering with ${ids.length} ids`);
-	const node_count = x.length;
-	const edge_count = source.length;
 	const ctx = canvas.getContext("2d");
 	if (ctx === null) {
 		throw new Error("failed to get drawing context");
@@ -34,12 +39,10 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 	// }
 
 	ctx.fillStyle = "#222222";
+	let n = 0;
 	for (const idx of ids) {
 		const i = idx - 1;
-		const r = scale * map(0, 80, 1, 10, window.incoming_degree[i]);
-		if (r < 0.5) {
-			continue;
-		}
+		const r = getRadius(scale, window.incoming_degree[i]);
 
 		const node_x = project(window.x[i], offsetX, scale);
 		const node_y = project(window.y[i], offsetY, scale);
@@ -47,19 +50,6 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 		ctx.arc(node_x, node_y, Math.round(r), 0, 2 * Math.PI);
 		ctx.fill();
 		ctx.closePath();
+		n += 1;
 	}
-
-	// for (let i = 0; i < node_count; i++) {
-	// 	const r = scale * map(0, 80, 1, 10, window.incoming_degree[i]);
-	// 	if (r < 0.5) {
-	// 		continue;
-	// 	}
-
-	// 	const node_x = project(window.x[i], offsetX, scale);
-	// 	const node_y = project(window.y[i], offsetY, scale);
-	// 	ctx.beginPath();
-	// 	ctx.arc(node_x, node_y, Math.round(r), 0, 2 * Math.PI);
-	// 	ctx.fill();
-	// 	ctx.closePath();
-	// }
 }

@@ -1,6 +1,6 @@
 declare global {
 	var api: API;
-	var refresh: (api: API, minX: number, maxX: number, minY: number, maxY: number) => void;
+	var refresh: (api: API, minX: number, maxX: number, minY: number, maxY: number) => Uint32Array;
 	var boop: (api: API) => void;
 	var tick: (api: API) => void;
 	var save: (api: API) => void;

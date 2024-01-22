@@ -6,7 +6,8 @@ function project(coordinate: number, offset: number, scale: number): number {
 	return (coordinate + offset) * scale + 360;
 }
 
-export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: number, scale: number) {
+export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: number, scale: number, ids: Uint32Array) {
+	// console.log(`rendering with ${ids.length} ids`);
 	const node_count = x.length;
 	const edge_count = source.length;
 	const ctx = canvas.getContext("2d");
@@ -33,7 +34,8 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 	// }
 
 	ctx.fillStyle = "#222222";
-	for (let i = 0; i < node_count; i++) {
+	for (const idx of ids) {
+		const i = idx - 1;
 		const r = scale * map(0, 80, 1, 10, window.incoming_degree[i]);
 		if (r < 0.5) {
 			continue;
@@ -46,4 +48,18 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 		ctx.fill();
 		ctx.closePath();
 	}
+
+	// for (let i = 0; i < node_count; i++) {
+	// 	const r = scale * map(0, 80, 1, 10, window.incoming_degree[i]);
+	// 	if (r < 0.5) {
+	// 		continue;
+	// 	}
+
+	// 	const node_x = project(window.x[i], offsetX, scale);
+	// 	const node_y = project(window.y[i], offsetY, scale);
+	// 	ctx.beginPath();
+	// 	ctx.arc(node_x, node_y, Math.round(r), 0, 2 * Math.PI);
+	// 	ctx.fill();
+	// 	ctx.closePath();
+	// }
 }

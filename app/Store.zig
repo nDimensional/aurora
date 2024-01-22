@@ -239,7 +239,7 @@ pub fn save(self: *Store) !void {
     }
 }
 
-pub fn count(self: *Store, area: AreaParams) !void {
+pub fn refresh(self: *Store, area: AreaParams) ![]u32 {
     self.ids.shrinkRetainingCapacity(0);
 
     try self.select_ids.bind(area);
@@ -250,4 +250,5 @@ pub fn count(self: *Store, area: AreaParams) !void {
     }
 
     std.log.info("there are {d} nodes in the area", .{self.ids.items.len});
+    return self.ids.items;
 }

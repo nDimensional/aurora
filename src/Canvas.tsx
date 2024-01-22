@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
+import { useDebouncedCallback } from "use-debounce";
 
 import { render } from "./render.js";
 import "./api.js";
@@ -9,6 +10,8 @@ function getScale(zoom: number) {
 
 export const Canvas: React.FC<{}> = ({}) => {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+	const ids = useRef(Uint32Array.from([]));
 
 	const [offsetX, setOffsetX] = useState(0);
 	const [offsetY, setOffsetY] = useState(0);
@@ -44,7 +47,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			// const delay = performance.mark()
 
 			const scale = getScale(zoomRef.current);
-			render(canvasRef.current, offsetXRef.current, offsetYRef.current, scale);
+			render(canvasRef.current, offsetXRef.current, offsetYRef.current, scale, ids.current);
 			requestAnimationFrame(animate);
 		}
 
@@ -110,13 +113,34 @@ export const Canvas: React.FC<{}> = ({}) => {
 	}, []);
 
 	const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-		const scale = getScale(zoomRef.current);
-		const right = 360 / scale - offsetXRef.current;
-		const left = -360 / scale - offsetXRef.current;
-		const top = 360 / scale + offsetYRef.current;
-		const bottom = -360 / scale + offsetYRef.current;
-		window.refresh(window.api, left, right, bottom, top);
+		// const scale = getScale(zoomRef.current);
+		// const right = 360 / scale - offsetXRef.current;
+		// const left = -360 / scale - offsetXRef.current;
+		// const top = 360 / scale + offsetYRef.current;
+		// const bottom = -360 / scale + offsetYRef.current;
+		// const result = window.refresh(window.api, left, right, bottom, top);
+		// console.log(`result!: ${result}`);
 	}, []);
+
+	const refreshIds = useDebouncedCallback(
+		(area: { minX: number; maxX: number; minY: number; maxY: number }) => {
+			ids.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY);
+			console.log(`refresh ${ids.current.length}`);
+		},
+		100,
+		{ leading: true, maxWait: 200 }
+	);
+
+	useEffect(() => {
+		const scale = getScale(zoom);
+		const right = 360 / scale - offsetX;
+		const left = -360 / scale - offsetX;
+		const top = 360 / scale - offsetY;
+		const bottom = -360 / scale - offsetY;
+		refreshIds({ minX: left, maxX: right, minY: bottom, maxY: top });
+		// ids.current = window.refresh(window.api, left, right, bottom, top);
+		// console.log(`refresh ${ids.current.length}`);
+	}, [zoom, offsetX, offsetY]);
 
 	return (
 		<div style={{ display: "flex", flexDirection: "column" }}>

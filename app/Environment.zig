@@ -101,10 +101,7 @@ pub fn run(self: *Environment) void {
     self.app.run();
 }
 
-fn onWindowReady(env: *Environment, event: View.WindowObjectReadyEvent) void {
-    _ = event; // autofix
-    _ = env; // autofix
-}
+fn onWindowReady(_: *Environment, _: View.WindowObjectReadyEvent) void {}
 
 fn onDOMReady(env: *Environment, event: View.DOMReadyEvent) void {
     {
@@ -215,10 +212,8 @@ fn refresh(ctx: Context, args: []const c.JSValueRef) !c.JSValueRef {
     };
 
     std.log.info("refresh({any})", .{area});
-    // env.store.boop();
-    try env.store.count(area);
-
-    return null;
+    const ids = try env.store.refresh(area);
+    return try ctx.makeTypedArray(u32, ids);
 }
 
 fn tick(_: Context, args: []const c.JSValueRef) !c.JSValueRef {

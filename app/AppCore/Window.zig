@@ -4,14 +4,6 @@ const Monitor = @import("Monitor.zig");
 
 const Window = @This();
 
-// pub const Flags = enum(u32) {
-//     Borderless = c.kWindowFlags_Borderless,
-//     Tilted = c.kWindowFlags_Titled,
-//     Resizable = c.kWindowFlags_Resizable,
-//     Maximizable = c.kWindowFlags_Maximizable,
-//     Hidden = c.kWindowFlags_Hidden,
-// };
-
 pub const Flags = struct {
     pub const Borderless = c.kWindowFlags_Borderless;
     pub const Tilted = c.kWindowFlags_Titled;
@@ -29,8 +21,6 @@ pub fn create(monitor: Monitor, width: u32, height: u32, fullscreen: bool, windo
     const ptr = c.ulCreateWindow(monitor.ptr, width, height, fullscreen, window_flags);
     return .{ .ptr = ptr };
 }
-
-// pub const CloseCallback = fn (user_data: ?*anyopaque, window: c.ULWindow) callconv(.C) void;
 
 pub fn setCloseCallback(
     self: Window,

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const c = @import("c.zig");
+const c = @import("../c.zig");
 
 pub fn getString(string: c.ULString) []const u8 {
     const length = c.ulStringGetLength(string);

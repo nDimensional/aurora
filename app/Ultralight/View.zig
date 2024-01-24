@@ -2,7 +2,7 @@ const std = @import("std");
 
 const c = @import("../c.zig");
 const Context = @import("../JavaScriptCore/Context.zig");
-const utils = @import("../utils.zig");
+const utils = @import("./utils.zig");
 const getString = utils.getString;
 
 const Renderer = @import("Renderer.zig");

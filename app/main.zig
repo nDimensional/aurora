@@ -14,8 +14,6 @@ const Settings = @import("AppCore/Settings.zig");
 const File = @import("File.zig");
 
 const fs = @import("filesystem.zig");
-const utils = @import("utils.zig");
-const getString = utils.getString;
 
 const Environment = @import("Environment.zig");
 

@@ -11,6 +11,8 @@ declare global {
 	var setRepulsion: (api: API, value: number) => void;
 	var setTemperature: (api: API, value: number) => void;
 
+	var node_count: number;
+	var edge_count: number;
 	var x: Float32Array;
 	var y: Float32Array;
 	var dx: Float32Array;

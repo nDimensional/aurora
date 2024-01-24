@@ -2,7 +2,7 @@ const std = @import("std");
 
 const c = @import("c.zig");
 
-const utils = @import("utils.zig");
+const utils = @import("./Ultralight//utils.zig");
 const getString = utils.getString;
 
 fn fileExists(path: c.ULString) callconv(.C) bool {

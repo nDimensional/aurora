@@ -16,8 +16,6 @@ const Store = @import("Store.zig");
 
 const Listener = @import("Listener.zig");
 const File = @import("File.zig");
-const utils = @import("utils.zig");
-const getString = utils.getString;
 
 const Environment = @This();
 
@@ -31,15 +29,17 @@ view: View,
 
 html: File,
 store: Store,
-// timer: std.time.Timer,
+timer: std.time.Timer,
 
 listener: Listener,
 
 pub fn init(env: *Environment) !void {
-    env.store = try Store.init(std.heap.c_allocator, "graph-1000.sqlite");
-    // env.store = try Store.init("graph-1000.sqlite");
+    env.store = try Store.init(std.heap.c_allocator, "graph-10000.sqlite");
+    // env.store = try Store.init(std.heap.c_allocator, "graph-1000.sqlite");
+    // env.store = try Store.init(std.heap.c_allocator, "graph-100.sqlite");
+    // env.store.randomize();
 
-    // env.timer = try std.time.Timer.start();
+    env.timer = try std.time.Timer.start();
 
     env.config = Config.create();
     env.config.setResourcePathPrefix("SDK/resources/");
@@ -198,7 +198,7 @@ fn boop(_: Context, args: []const c.JSValueRef) !c.JSValueRef {
 
 fn refresh(ctx: Context, args: []const c.JSValueRef) !c.JSValueRef {
     if (args.len < 5) {
-        return null;
+        return error.InsuffientArgs;
     }
 
     const api = args[0];
@@ -225,8 +225,21 @@ fn tick(_: Context, args: []const c.JSValueRef) !c.JSValueRef {
     const api = args[0];
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
 
-    std.log.info("tick()", .{});
+    env.timer.reset();
+
+    // try env.store.rebuild();
+
+    // const rebuild_time: f64 = @floatFromInt(env.timer.lap());
+
     try env.store.tick();
+
+    const tick_time: f64 = @floatFromInt(env.timer.read());
+
+    // const stdout = std.io.getStdOut().writer();
+    // try stdout.print("build quadree: {d}ms\n", .{insert_time / 1_000_000});
+    // try stdout.print("tick: {d}ms\n", .{tick_time / 1_000_000});
+    // std.log.info("rebuild quadree: {d}ms", .{rebuild_time / 1_000_000});
+    std.log.info("tick: {d}ms", .{tick_time / 1_000_000});
 
     return null;
 }

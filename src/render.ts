@@ -2,16 +2,24 @@ import "./api.js";
 
 import { map } from "./utils.js";
 
-function project(coordinate: number, offset: number, scale: number): number {
-	return (coordinate + offset) * scale + 360;
+const minRadius = 2;
+// const minRadius = 0.5;
+
+export function getMinZ(scale: number) {
+	const mass = map(3, 50, 0, 80, minRadius / scale);
+	if (mass < 0) {
+		return 0;
+	} else {
+		return Math.pow(mass, 2);
+	}
 }
 
-const minRadius = 1;
+export function getRadius(scale: number, z: number) {
+	return scale * map(0, 80, 3, 50, Math.sqrt(z));
+}
 
-export const getMinZ = (scale: number) => map(1, 10, 0, 80, minRadius / scale);
-
-function getRadius(scale: number, z: number) {
-	return scale * map(0, 80, 1, 10, z);
+function project(coordinate: number, offset: number, scale: number): number {
+	return (coordinate + offset) * scale + 360;
 }
 
 export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: number, scale: number, ids: Uint32Array) {
@@ -42,7 +50,7 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 	let n = 0;
 	for (const idx of ids) {
 		const i = idx - 1;
-		const r = getRadius(scale, window.incoming_degree[i]);
+		const r = getRadius(scale, window.z[i]);
 
 		const node_x = project(window.x[i], offsetX, scale);
 		const node_y = project(window.y[i], offsetY, scale);

@@ -5,9 +5,9 @@ import { map } from "./utils.js";
 import "./api.js";
 
 const ranges = {
-	attraction: [0.0001, 0.01],
-	repulsion: [1, 100],
-	temperature: [0.00001, 0.1],
+	attraction: [0.00005, 0.002],
+	repulsion: [50, 200],
+	temperature: [0.005, 0.5],
 } as const;
 
 const scale = {

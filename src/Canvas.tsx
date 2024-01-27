@@ -4,8 +4,16 @@ import { useDebouncedCallback } from "use-debounce";
 import { getMinZ, render } from "./render.js";
 import "./api.js";
 
+const MIN_ZOOM = 0;
+// const MAX_ZOOM = 2000;
+const MAX_ZOOM = 4000;
+
 function getScale(zoom: number) {
-	return 0.001 * (400 - zoom) + 1.001;
+	// // { (0, 1) (1000, 0.4) (2000, 0.1) }
+	// return 0.00000015 * Math.pow(zoom, 2) - 0.00075 * zoom + 1;
+
+	// { (0, 1) (2000, 0.1) (4000, 0.01) }
+	return 0.00000010125 * Math.pow(zoom, 2) - 0.0006525 * zoom + 1;
 }
 
 export const Canvas: React.FC<{}> = ({}) => {
@@ -60,9 +68,8 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 	const handleScroll = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
 		zoomRef.current += event.deltaY;
-		zoomRef.current = Math.max(zoomRef.current, 0);
-		zoomRef.current = Math.min(zoomRef.current, 1300);
-
+		zoomRef.current = Math.max(zoomRef.current, MIN_ZOOM);
+		zoomRef.current = Math.min(zoomRef.current, MAX_ZOOM);
 		setZoom(zoomRef.current);
 	}, []);
 
@@ -103,7 +110,6 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const refreshIds = useDebouncedCallback(
 		(area: { minX: number; maxX: number; minY: number; maxY: number; minZ: number }) => {
 			ids.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY, area.minZ);
-			console.log(`refresh ${ids.current.length} ids`);
 		},
 		100,
 		{ leading: true, maxWait: 200 }

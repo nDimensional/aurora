@@ -19,6 +19,9 @@ const BoundingBoxResult = struct { bound: f32 = 0 };
 
 pub const Count = struct { count: usize };
 
+const node_pool_size = 8;
+const edge_pool_size = 8;
+
 allocator: std.mem.Allocator,
 prng: std.rand.Xoshiro256 = std.rand.Xoshiro256.init(0),
 db: sqlite.Database,
@@ -37,14 +40,18 @@ source: []u32 = undefined,
 target: []u32 = undefined,
 x: []f32 = undefined,
 y: []f32 = undefined,
-incoming_degree: []f32 = undefined,
-force: []@Vector(2, f32) = undefined,
+z: []f32 = undefined,
+
+node_forces: []@Vector(2, f32) = undefined,
+edge_forces: [edge_pool_size][]@Vector(2, f32) = undefined,
 
 quadtree: Quadtree,
 
-attraction: f32 = 0.005,
-repulsion: f32 = 50.0,
-temperature: f32 = 0.005,
+attraction: f32 = 0.0001,
+repulsion: f32 = 100.0,
+temperature: f32 = 0.1,
+
+timer: std.time.Timer,
 
 pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
     const db = try sqlite.Database.init(.{ .path = path });
@@ -70,6 +77,8 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
         .ids = std.ArrayList(u32).init(allocator),
 
         .quadtree = Quadtree.init(allocator, 0),
+
+        .timer = try std.time.Timer.start(),
     };
 
     {
@@ -114,7 +123,7 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
 
     store.x = try allocator.alloc(f32, store.node_count);
     store.y = try allocator.alloc(f32, store.node_count);
-    store.incoming_degree = try allocator.alloc(f32, store.node_count);
+    store.z = try allocator.alloc(f32, store.node_count);
 
     {
         const Node = struct { idx: u32, x: f32, y: f32, incoming_degree: f32 };
@@ -123,22 +132,22 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
         );
         defer select_nodes.deinit();
 
-        var incoming_degree = std.ArrayList(f32).init(allocator);
-        defer incoming_degree.deinit();
-
         try select_nodes.bind(.{});
         defer select_nodes.reset();
         while (try select_nodes.step()) |node| {
             const i = node.idx - 1;
             store.x[i] = node.x;
             store.y[i] = node.y;
-            store.incoming_degree[i] = node.incoming_degree;
+            store.z[i] = node.incoming_degree;
         }
     }
 
-    store.force = try allocator.alloc(@Vector(2, f32), store.node_count);
-    for (0..store.node_count) |i| {
-        store.force[i] = .{ 0, 0 };
+    store.node_forces = try allocator.alloc(@Vector(2, f32), store.node_count);
+    for (store.node_forces) |*f| f.* = .{ 0, 0 };
+
+    for (0..edge_pool_size) |i| {
+        store.edge_forces[i] = try allocator.alloc(@Vector(2, f32), store.node_count);
+        for (store.edge_forces[i]) |*f| f.* = .{ 0, 0 };
     }
 
     return store;
@@ -159,8 +168,10 @@ pub fn deinit(self: *Store) void {
     self.allocator.free(self.target);
     self.allocator.free(self.x);
     self.allocator.free(self.y);
-    self.allocator.free(self.incoming_degree);
-    self.allocator.free(self.force);
+    self.allocator.free(self.z);
+
+    self.allocator.free(self.node_forces);
+    inline for (self.edge_forces) |edge_forces| self.allocator.free(edge_forces);
 }
 
 pub fn inject(self: *Store, ctx: Context) !void {
@@ -173,7 +184,7 @@ pub fn inject(self: *Store, ctx: Context) !void {
     ctx.setProperty(global, "target", try ctx.makeTypedArray(u32, self.target));
     ctx.setProperty(global, "x", try ctx.makeTypedArray(f32, self.x));
     ctx.setProperty(global, "y", try ctx.makeTypedArray(f32, self.y));
-    ctx.setProperty(global, "incoming_degree", try ctx.makeTypedArray(f32, self.incoming_degree));
+    ctx.setProperty(global, "z", try ctx.makeTypedArray(f32, self.z));
 
     ctx.setProperty(global, "attraction", ctx.makeNumber(self.attraction));
     ctx.setProperty(global, "repulsion", ctx.makeNumber(self.repulsion));
@@ -214,57 +225,93 @@ fn getMaxY(self: Store) !BoundingBoxResult {
     return try self.select_max_y.step() orelse .{};
 }
 
-pub fn randomize(self: *Store) void {
+pub fn randomize(self: *Store, s: u32) void {
     var random = self.prng.random();
     for (0..self.node_count) |i| {
-        self.x[i] = @floatFromInt(random.uintLessThan(u32, 720));
-        self.x[i] -= 360;
-        self.y[i] = @floatFromInt(random.uintLessThan(u32, 720));
-        self.y[i] -= 360;
-    }
-}
+        const p = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(self.node_count));
 
-pub fn boop(self: *Store) void {
-    var random = self.prng.random();
-    for (0..self.node_count) |i| {
-        const r = random.float(f32) * std.math.tau;
-        self.force[i] = .{ std.math.cos(r), std.math.sin(r) };
-        self.force[i] *= @splat(100);
+        self.x[i] = @floatFromInt(random.uintLessThan(u32, s));
+        self.x[i] -= @floatFromInt(s / 2);
+        self.x[i] += p;
+
+        self.y[i] = @floatFromInt(random.uintLessThan(u32, s));
+        self.y[i] -= @floatFromInt(s / 2);
+        self.y[i] += p;
     }
 }
 
 pub fn tick(self: *Store) !void {
-    const attraction: @Vector(2, f32) = @splat(self.attraction);
-    const temperature: @Vector(2, f32) = @splat(self.temperature);
-
-    for (0..self.edge_count) |i| {
-        const s = self.source[i] - 1;
-        const t = self.target[i] - 1;
-
-        const dx = self.x[t] - self.x[s];
-        const dy = self.y[t] - self.y[s];
-
-        const delta = @Vector(2, f32){ dx, dy } * attraction;
-
-        self.force[s] += delta;
-        self.force[t] -= delta;
-    }
+    self.timer.reset();
 
     try self.rebuild();
+    std.log.info("rebuilt quadtree in {d}ms", .{self.timer.lap() / 1_000_000});
 
-    for (0..self.node_count) |i| {
-        const x = self.x[i];
-        const y = self.y[i];
-        const mass = self.incoming_degree[i];
-        self.force[i] += self.quadtree.getForce(self.repulsion, .{ x, y }, mass);
+    {
+        var pool: [node_pool_size]std.Thread = undefined;
+        for (0..node_pool_size) |i| {
+            const min = i * self.node_count / node_pool_size;
+            const max = (i + 1) * self.node_count / node_pool_size;
+            pool[i] = try std.Thread.spawn(.{}, updateNodeForces, .{ self, min, max, self.node_forces });
+        }
+
+        for (0..node_pool_size) |i| pool[i].join();
+
+        std.log.info("applied node forces in {d}ms", .{self.timer.lap() / 1_000_000});
     }
 
+    {
+        var pool: [edge_pool_size]std.Thread = undefined;
+        for (0..edge_pool_size) |i| {
+            const min = i * self.edge_count / edge_pool_size;
+            const max = (i + 1) * self.edge_count / edge_pool_size;
+            pool[i] = try std.Thread.spawn(.{}, updateEdgeForces, .{ self, min, max, self.edge_forces[i] });
+        }
+
+        for (0..edge_pool_size) |i| pool[i].join();
+
+        std.log.info("applied edge forces in {d}ms", .{self.timer.lap() / 1_000_000});
+    }
+
+    const temperature: @Vector(2, f32) = @splat(self.temperature);
     for (0..self.node_count) |i| {
-        const f = self.force[i] * temperature;
+        var f = self.node_forces[i];
+        inline for (self.edge_forces) |edge_forces| f += edge_forces[i];
+
+        f *= temperature;
         self.x[i] += f[0];
         self.y[i] += f[1];
 
-        self.force[i] = .{ 0, 0 };
+        self.node_forces[i] = .{ 0, 0 };
+        inline for (self.edge_forces) |edge_forces| edge_forces[i] = .{ 0, 0 };
+    }
+}
+
+fn updateEdgeForces(self: *Store, min: usize, max: usize, force: []@Vector(2, f32)) void {
+    for (min..max) |i| {
+        if (i >= self.edge_count) {
+            break;
+        }
+
+        const s = self.source[i] - 1;
+        const t = self.target[i] - 1;
+
+        const f = forces.getAttraction(self.attraction, .{ self.x[s], self.y[s] }, .{ self.x[t], self.y[t] });
+
+        force[s] += f;
+        force[t] -= f;
+    }
+}
+
+fn updateNodeForces(self: *Store, min: usize, max: usize, node_forces: []@Vector(2, f32)) void {
+    for (min..max) |i| {
+        if (i >= self.node_count) {
+            break;
+        }
+
+        const x = self.x[i];
+        const y = self.y[i];
+        const mass = forces.getMass(self.z[i]);
+        node_forces[i] += self.quadtree.getForce(self.repulsion, .{ x, y }, mass);
     }
 }
 
@@ -276,7 +323,7 @@ pub fn rebuild(self: *Store) !void {
     while (i < self.node_count) : (i += 1) {
         const x = self.x[i];
         const y = self.y[i];
-        const mass = self.incoming_degree[i];
+        const mass = forces.getMass(self.z[i]);
         try self.quadtree.insert(i + 1, .{ x, y }, mass);
     }
 }
@@ -284,7 +331,7 @@ pub fn rebuild(self: *Store) !void {
 fn getNodeForce(self: *Store, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
     var force = @Vector(2, f32){ 0, 0 };
     for (0..self.node_count) |i| {
-        force += forces.getRepulsion(self.repulsion, p, mass, .{ self.x[i], self.y[i] }, self.incoming_degree[i]);
+        force += forces.getRepulsion(self.repulsion, p, mass, .{ self.x[i], self.y[i] }, forces.getMass(self.z[i]));
     }
 
     return force;

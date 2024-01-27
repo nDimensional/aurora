@@ -34,10 +34,11 @@ timer: std.time.Timer,
 listener: Listener,
 
 pub fn init(env: *Environment) !void {
-    env.store = try Store.init(std.heap.c_allocator, "graph-10000.sqlite");
+    env.store = try Store.init(std.heap.c_allocator, "graph-100000.sqlite");
+    // env.store = try Store.init(std.heap.c_allocator, "graph-10000.sqlite");
     // env.store = try Store.init(std.heap.c_allocator, "graph-1000.sqlite");
     // env.store = try Store.init(std.heap.c_allocator, "graph-100.sqlite");
-    // env.store.randomize();
+    // env.store.randomize(7200);
 
     env.timer = try std.time.Timer.start();
 
@@ -119,7 +120,6 @@ fn onDOMReady(env: *Environment, event: View.DOMReadyEvent) void {
         const global = ctx.getGlobal();
         ctx.setProperty(global, "api", api);
         ctx.setProperty(global, "refresh", ctx.makeFunction("refresh", &refresh));
-        ctx.setProperty(global, "boop", ctx.makeFunction("boop", &boop));
         ctx.setProperty(global, "tick", ctx.makeFunction("tick", &tick));
         ctx.setProperty(global, "save", ctx.makeFunction("save", &save));
         ctx.setProperty(global, "setAttraction", ctx.makeFunction("setAttraction", &setAttraction));
@@ -188,12 +188,7 @@ fn onUpdate(env: *Environment) void {
         result = env.listener.poll() catch return;
     }
 
-    env.store.tick() catch return;
-}
-
-fn boop(_: Context, args: []const c.JSValueRef) !c.JSValueRef {
-    std.log.info("boop([{d}])", .{args.len});
-    return null;
+    // env.store.tick() catch return;
 }
 
 fn refresh(ctx: Context, args: []const c.JSValueRef) !c.JSValueRef {
@@ -227,19 +222,9 @@ fn tick(_: Context, args: []const c.JSValueRef) !c.JSValueRef {
 
     env.timer.reset();
 
-    // try env.store.rebuild();
-
-    // const rebuild_time: f64 = @floatFromInt(env.timer.lap());
-
     try env.store.tick();
 
-    const tick_time: f64 = @floatFromInt(env.timer.read());
-
-    // const stdout = std.io.getStdOut().writer();
-    // try stdout.print("build quadree: {d}ms\n", .{insert_time / 1_000_000});
-    // try stdout.print("tick: {d}ms\n", .{tick_time / 1_000_000});
-    // std.log.info("rebuild quadree: {d}ms", .{rebuild_time / 1_000_000});
-    std.log.info("tick: {d}ms", .{tick_time / 1_000_000});
+    std.log.info("tick: {d}ms", .{env.timer.lap() / 1_000_000});
 
     return null;
 }

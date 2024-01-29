@@ -26,10 +26,10 @@ allocator: std.mem.Allocator,
 prng: std.rand.Xoshiro256 = std.rand.Xoshiro256.init(0),
 db: sqlite.Database,
 
-select_min_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-select_max_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-select_min_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-select_max_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
+// select_min_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
+// select_max_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
+// select_min_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
+// select_max_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
 select_ids: sqlite.Statement(AreaParams, AreaResult),
 ids: std.ArrayList(u32),
 
@@ -42,10 +42,16 @@ x: []f32 = undefined,
 y: []f32 = undefined,
 z: []f32 = undefined,
 
+min_y: f32 = 0,
+max_y: f32 = 0,
+min_x: f32 = 0,
+max_x: f32 = 0,
+
 node_forces: []@Vector(2, f32) = undefined,
 edge_forces: [edge_pool_size][]@Vector(2, f32) = undefined,
 
 quadtree: Quadtree,
+// quads: [4]Quadtree = undefined,
 
 attraction: f32 = 0.0001,
 repulsion: f32 = 100.0,
@@ -56,30 +62,28 @@ timer: std.time.Timer,
 pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
     const db = try sqlite.Database.init(.{ .path = path });
 
-    const select_min_x = try db.prepare(BoundingBoxParams, BoundingBoxResult, "SELECT minX as bound FROM atlas ORDER BY minX ASC LIMIT 1");
-    const select_max_x = try db.prepare(BoundingBoxParams, BoundingBoxResult, "SELECT maxX as bound FROM atlas ORDER BY maxX DESC LIMIT 1");
-    const select_min_y = try db.prepare(BoundingBoxParams, BoundingBoxResult, "SELECT minY as bound FROM atlas ORDER BY minY ASC LIMIT 1");
-    const select_max_y = try db.prepare(BoundingBoxParams, BoundingBoxResult, "SELECT maxY as bound FROM atlas ORDER BY maxY DESC LIMIT 1");
-
     const select_ids = try db.prepare(AreaParams, AreaResult,
         \\ SELECT idx FROM atlas WHERE :minX <= minX AND maxX <= :maxX AND :minY <= minY AND maxY <= :maxY AND :minZ <= minZ
     );
+
+    const area = Quadtree.Area{};
 
     var store = Store{
         .allocator = allocator,
         .db = db,
 
-        .select_min_x = select_min_x,
-        .select_max_x = select_max_x,
-        .select_min_y = select_min_y,
-        .select_max_y = select_max_y,
         .select_ids = select_ids,
         .ids = std.ArrayList(u32).init(allocator),
 
-        .quadtree = Quadtree.init(allocator, 0),
+        .quadtree = Quadtree.init(allocator, area),
 
         .timer = try std.time.Timer.start(),
     };
+
+    // for (0..store.quads.len) |i| {
+    //     const q = @as(u2, @intCast(i));
+    //     store.quads[i] = Quadtree.init(allocator, area.divide(@enumFromInt(q)));
+    // }
 
     {
         const count_edges = try store.db.prepare(struct {}, Count, "SELECT count(*) as count FROM edges");
@@ -139,6 +143,11 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
             store.x[i] = node.x;
             store.y[i] = node.y;
             store.z[i] = node.incoming_degree;
+
+            store.min_x = @min(store.min_x, node.x);
+            store.max_x = @max(store.max_x, node.x);
+            store.min_y = @min(store.min_y, node.y);
+            store.max_y = @max(store.max_y, node.y);
         }
     }
 
@@ -157,12 +166,10 @@ pub fn deinit(self: *Store) void {
     self.select_ids.deinit();
     self.db.deinit();
 
-    self.select_min_x.deinit();
-    self.select_max_x.deinit();
-    self.select_min_y.deinit();
-    self.select_max_y.deinit();
     self.ids.deinit();
+
     self.quadtree.deinit();
+    // inline for (self.quads) |*q| q.deinit();
 
     self.allocator.free(self.source);
     self.allocator.free(self.target);
@@ -192,37 +199,8 @@ pub fn inject(self: *Store, ctx: Context) !void {
 }
 
 pub fn getBoundingSize(self: Store) !f32 {
-    const min_x = try self.getMinX();
-    const max_x = try self.getMaxX();
-    const min_y = try self.getMinY();
-    const max_y = try self.getMaxY();
-
-    const s = @max(@abs(min_x.bound), @abs(max_x.bound), @abs(min_y.bound), @abs(max_y.bound)) * 2;
+    const s = @max(@abs(self.min_x), @abs(self.max_x), @abs(self.min_y), @abs(self.max_y)) * 2;
     return std.math.pow(f32, 2, @ceil(@log2(s)));
-}
-
-fn getMinX(self: Store) !BoundingBoxResult {
-    try self.select_min_x.bind(.{});
-    defer self.select_min_x.reset();
-    return try self.select_min_x.step() orelse .{};
-}
-
-fn getMaxX(self: Store) !BoundingBoxResult {
-    try self.select_max_x.bind(.{});
-    defer self.select_max_x.reset();
-    return try self.select_max_x.step() orelse .{};
-}
-
-fn getMinY(self: Store) !BoundingBoxResult {
-    try self.select_min_y.bind(.{});
-    defer self.select_min_y.reset();
-    return try self.select_min_y.step() orelse .{};
-}
-
-fn getMaxY(self: Store) !BoundingBoxResult {
-    try self.select_max_y.bind(.{});
-    defer self.select_max_y.reset();
-    return try self.select_max_y.step() orelse .{};
 }
 
 pub fn randomize(self: *Store, s: u32) void {
@@ -243,8 +221,32 @@ pub fn randomize(self: *Store, s: u32) void {
 pub fn tick(self: *Store) !void {
     self.timer.reset();
 
-    try self.rebuild();
-    std.log.info("rebuilt quadtree in {d}ms", .{self.timer.lap() / 1_000_000});
+    {
+        try self.rebuild();
+
+        // const s = try self.getBoundingSize();
+        // const area = Quadtree.Area{ .s = s };
+        // std.log.info("global area: {any}", .{area});
+
+        // std.log.info("got bounding size in {d}ms", .{self.timer.lap() / 1_000_000});
+
+        // // var pool: [4]std.Thread = undefined;
+        // for (0..4) |i| {
+        //     const tree = &self.quads[i];
+        //     const q: Quadtree.Quadrant = @enumFromInt(i);
+        //     // std.log.info("rebuilding {any}", .{q});
+        //     const a = area.divide(q);
+        //     // std.log.info("resizing to s={d:.3}, c=({d:.3}, {d:.3})", .{ a.s, a.c[0], a.c[1] });
+        //     tree.reset(a);
+        //     try self.rebuildQuad(tree);
+
+        //     // std.log.info("rebuildQuad {any} in {d}ms ({d} nodes)", .{ q, self.timer.lap() / 1_000_000, tree.tree.items.len });
+        //     // pool[i] = try std.Thread.spawn(.{}, rebuildQuad, .{ self, tree });
+        // }
+
+        // for (0..4) |i| pool[i].join();
+        // std.log.info("rebuilt quadtree in {d}ms", .{self.timer.lap() / 1_000_000});
+    }
 
     {
         var pool: [node_pool_size]std.Thread = undefined;
@@ -256,7 +258,7 @@ pub fn tick(self: *Store) !void {
 
         for (0..node_pool_size) |i| pool[i].join();
 
-        std.log.info("applied node forces in {d}ms", .{self.timer.lap() / 1_000_000});
+        // std.log.info("applied node forces in {d}ms", .{self.timer.lap() / 1_000_000});
     }
 
     {
@@ -269,8 +271,13 @@ pub fn tick(self: *Store) !void {
 
         for (0..edge_pool_size) |i| pool[i].join();
 
-        std.log.info("applied edge forces in {d}ms", .{self.timer.lap() / 1_000_000});
+        // std.log.info("applied edge forces in {d}ms", .{self.timer.lap() / 1_000_000});
     }
+
+    self.min_x = 0;
+    self.max_x = 0;
+    self.min_y = 0;
+    self.max_y = 0;
 
     const temperature: @Vector(2, f32) = @splat(self.temperature);
     for (0..self.node_count) |i| {
@@ -280,6 +287,11 @@ pub fn tick(self: *Store) !void {
         f *= temperature;
         self.x[i] += f[0];
         self.y[i] += f[1];
+
+        self.min_x = @min(self.min_x, self.x[i]);
+        self.max_x = @max(self.max_x, self.x[i]);
+        self.min_y = @min(self.min_y, self.y[i]);
+        self.max_y = @max(self.max_y, self.y[i]);
 
         self.node_forces[i] = .{ 0, 0 };
         inline for (self.edge_forces) |edge_forces| edge_forces[i] = .{ 0, 0 };
@@ -308,16 +320,20 @@ fn updateNodeForces(self: *Store, min: usize, max: usize, node_forces: []@Vector
             break;
         }
 
-        const x = self.x[i];
-        const y = self.y[i];
+        const p = @Vector(2, f32){ self.x[i], self.y[i] };
         const mass = forces.getMass(self.z[i]);
-        node_forces[i] += self.quadtree.getForce(self.repulsion, .{ x, y }, mass);
+
+        // for (self.quads) |tree| {
+        //     node_forces[i] += tree.getForce(self.repulsion, p, mass);
+        // }
+
+        node_forces[i] += self.quadtree.getForce(self.repulsion, p, mass);
     }
 }
 
 pub fn rebuild(self: *Store) !void {
     const s = try self.getBoundingSize();
-    self.quadtree.reset(s);
+    self.quadtree.reset(.{ .s = s });
 
     var i: u32 = 0;
     while (i < self.node_count) : (i += 1) {
@@ -327,6 +343,22 @@ pub fn rebuild(self: *Store) !void {
         try self.quadtree.insert(i + 1, .{ x, y }, mass);
     }
 }
+
+// pub fn rebuildQuad(self: *Store, tree: *Quadtree) !void {
+//     var timer = try std.time.Timer.start();
+
+//     var i: u32 = 0;
+//     while (i < self.node_count) : (i += 1) {
+//         const p = @Vector(2, f32){ self.x[i], self.y[i] };
+//         // std.log.info("contains ({d:.3}, {d:.3}): {any}", .{ p[0], p[1], tree.area.contains(p) });
+//         if (tree.area.contains(p)) {
+//             const mass = forces.getMass(self.z[i]);
+//             try tree.insert(i + 1, p, mass);
+//         }
+//     }
+
+//     std.log.info("rebuildQuad in {d}ms ({d} nodes)", .{ timer.read() / 1_000_000, tree.tree.items.len });
+// }
 
 fn getNodeForce(self: *Store, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
     var force = @Vector(2, f32){ 0, 0 };

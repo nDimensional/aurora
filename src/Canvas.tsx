@@ -1,34 +1,42 @@
-import React, { useRef, useEffect, useCallback, useState } from "react";
+import React, { useRef, useEffect, useCallback } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import { getMinZ, render } from "./render.js";
 import "./api.js";
 
 const MIN_ZOOM = 0;
-// const MAX_ZOOM = 2000;
-const MAX_ZOOM = 4000;
+const MAX_ZOOM = 2400;
+// const MAX_ZOOM = 4000;
 
 function getScale(zoom: number) {
-	// // { (0, 1) (1000, 0.4) (2000, 0.1) }
-	// return 0.00000015 * Math.pow(zoom, 2) - 0.00075 * zoom + 1;
-
-	// { (0, 1) (2000, 0.1) (4000, 0.01) }
 	return 0.00000010125 * Math.pow(zoom, 2) - 0.0006525 * zoom + 1;
 }
 
-export const Canvas: React.FC<{}> = ({}) => {
+export interface CanvasProps {
+	width: number;
+	height: number;
+
+	offsetX: number;
+	setOffsetX: (value: number) => void;
+
+	offsetY: number;
+	setOffsetY: (value: number) => void;
+
+	zoom: number;
+	setZoom: (value: number) => void;
+}
+
+export const Canvas: React.FC<CanvasProps> = (props) => {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-	const ids = useRef(Uint32Array.from([]));
+	const idsRef = useRef<Uint32Array | null>(null);
 
-	const [offsetX, setOffsetX] = useState(0);
-	const [offsetY, setOffsetY] = useState(0);
-	const [zoom, setZoom] = useState(0);
+	const offsetXRef = useRef(props.offsetX);
+	const offsetYRef = useRef(props.offsetY);
+	const zoomRef = useRef(props.zoom);
 
-	const offsetXRef = useRef(offsetX);
-	const offsetYRef = useRef(offsetY);
-	const zoomRef = useRef(zoom);
-	const framerateRef = useRef<HTMLElement | null>(null);
+	const widthRef = useRef(props.width);
+	const heightRef = useRef(props.height);
 
 	useEffect(() => {
 		if (canvasRef.current === null) {
@@ -41,7 +49,17 @@ export const Canvas: React.FC<{}> = ({}) => {
 			}
 
 			const scale = getScale(zoomRef.current);
-			render(canvasRef.current, offsetXRef.current, offsetYRef.current, scale, ids.current);
+			const ids = idsRef.current ?? Uint32Array.from([]);
+			render(
+				canvasRef.current,
+				offsetXRef.current,
+				offsetYRef.current,
+				scale,
+				widthRef.current,
+				heightRef.current,
+				ids
+			);
+
 			requestAnimationFrame(animate);
 		}
 
@@ -52,16 +70,16 @@ export const Canvas: React.FC<{}> = ({}) => {
 		const delta = 10 * (1 / getScale(zoomRef.current));
 		if (event.key === "ArrowUp") {
 			offsetYRef.current += delta;
-			setOffsetY(offsetYRef.current);
+			props.setOffsetY(offsetYRef.current);
 		} else if (event.key === "ArrowDown") {
 			offsetYRef.current -= delta;
-			setOffsetY(offsetYRef.current);
+			props.setOffsetY(offsetYRef.current);
 		} else if (event.key === "ArrowRight") {
 			offsetXRef.current -= delta;
-			setOffsetX(offsetXRef.current);
+			props.setOffsetX(offsetXRef.current);
 		} else if (event.key === "ArrowLeft") {
 			offsetXRef.current += delta;
-			setOffsetX(offsetXRef.current);
+			props.setOffsetX(offsetXRef.current);
 		}
 	}, []);
 	4;
@@ -70,16 +88,16 @@ export const Canvas: React.FC<{}> = ({}) => {
 		zoomRef.current += event.deltaY;
 		zoomRef.current = Math.max(zoomRef.current, MIN_ZOOM);
 		zoomRef.current = Math.min(zoomRef.current, MAX_ZOOM);
-		setZoom(zoomRef.current);
+		props.setZoom(zoomRef.current);
 	}, []);
 
 	const anchor = useRef<{ x: number; offsetX: number; y: number; offsetY: number } | null>(null);
 
 	const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		anchor.current = {
-			x: event.clientX - offsetX,
+			x: event.clientX - props.offsetX,
 			offsetX: offsetXRef.current,
-			y: event.clientY - offsetY,
+			y: event.clientY - props.offsetY,
 			offsetY: offsetYRef.current,
 		};
 	}, []);
@@ -91,8 +109,8 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 		const scale = getScale(zoomRef.current);
 
-		const x = event.clientX - offsetX;
-		const y = event.clientY - offsetY;
+		const x = event.clientX - props.offsetX;
+		const y = event.clientY - props.offsetY;
 		const dx = x - anchor.current.x;
 		const dy = y - anchor.current.y;
 		offsetXRef.current = anchor.current.offsetX + dx / scale;
@@ -101,49 +119,53 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 	const handleMouseUp = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		anchor.current = null;
-		setOffsetX(offsetXRef.current);
-		setOffsetY(offsetYRef.current);
+		props.setOffsetX(offsetXRef.current);
+		props.setOffsetY(offsetYRef.current);
 	}, []);
 
 	const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {}, []);
 
 	const refreshIds = useDebouncedCallback(
 		(area: { minX: number; maxX: number; minY: number; maxY: number; minZ: number }) => {
-			ids.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY, area.minZ);
+			idsRef.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY, area.minZ);
 		},
 		100,
 		{ leading: true, maxWait: 200 }
 	);
 
 	useEffect(() => {
-		const scale = getScale(zoom);
-		const maxX = 360 / scale - offsetX;
-		const minX = -360 / scale - offsetX;
-		const maxY = 360 / scale - offsetY;
-		const minY = -360 / scale - offsetY;
+		offsetXRef.current = props.offsetX;
+		offsetYRef.current = props.offsetY;
+		zoomRef.current = props.zoom;
+		widthRef.current = props.width;
+		heightRef.current = props.height;
+
+		const scale = getScale(props.zoom);
+		const w = props.width / 2;
+		const h = props.height / 2;
+		const maxX = w / scale - props.offsetX;
+		const minX = -w / scale - props.offsetX;
+		const maxY = h / scale - props.offsetY;
+		const minY = -h / scale - props.offsetY;
 		const minZ = getMinZ(scale);
 		refreshIds({ minX, maxX, minY, maxY, minZ });
-	}, [zoom, offsetX, offsetY]);
+	}, [props.zoom, props.offsetX, props.offsetY, props.width, props.height]);
 
 	return (
-		<div style={{ display: "flex", flexDirection: "column" }}>
-			<canvas
-				autoFocus
-				tabIndex={1}
-				width={720}
-				height={720}
-				ref={canvasRef}
-				onKeyDown={handleKeyDown}
-				onWheel={handleScroll}
-				onMouseDown={handleMouseDown}
-				onMouseMove={handleMouseMove}
-				onMouseUp={handleMouseUp}
-				onClick={handleClick}
-			></canvas>
-			<code>
-				{offsetX.toFixed(0)}, {offsetY.toFixed(0)}, {zoom}
-			</code>
-			<code ref={framerateRef}></code>
-		</div>
+		<canvas
+			autoFocus
+			tabIndex={1}
+			// width={720}
+			// height={720}
+			width={props.width}
+			height={props.height}
+			ref={canvasRef}
+			onKeyDown={handleKeyDown}
+			onWheel={handleScroll}
+			onMouseDown={handleMouseDown}
+			onMouseMove={handleMouseMove}
+			onMouseUp={handleMouseUp}
+			onClick={handleClick}
+		></canvas>
 	);
 };

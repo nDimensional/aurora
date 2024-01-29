@@ -221,10 +221,9 @@ fn tick(_: Context, args: []const c.JSValueRef) !c.JSValueRef {
     const env: *Environment = @alignCast(@ptrCast(c.JSObjectGetPrivate(@constCast(api))));
 
     env.timer.reset();
+    defer std.log.info("tick: {d}ms", .{env.timer.lap() / 1_000_000});
 
     try env.store.tick();
-
-    std.log.info("tick: {d}ms", .{env.timer.lap() / 1_000_000});
 
     return null;
 }

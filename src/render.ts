@@ -2,8 +2,8 @@ import "./api.js";
 
 import { map } from "./utils.js";
 
-const minRadius = 2;
-// const minRadius = 0.5;
+// const minRadius = 1;
+const minRadius = 0.5;
 
 export function getMinZ(scale: number) {
 	const mass = map(3, 50, 0, 80, minRadius / scale);
@@ -18,17 +18,33 @@ export function getRadius(scale: number, z: number) {
 	return scale * map(0, 80, 3, 50, Math.sqrt(z));
 }
 
-function project(coordinate: number, offset: number, scale: number): number {
-	return (coordinate + offset) * scale + 360;
+function project(
+	[x, y]: [number, number],
+	offsetX: number,
+	offsetY: number,
+	scale: number,
+	width: number,
+	height: number
+): [number, number] {
+	return [(x + offsetX) * scale + width / 2, (y + offsetY) * scale + height / 2];
 }
 
-export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: number, scale: number, ids: Uint32Array) {
+export function render(
+	canvas: HTMLCanvasElement,
+	offsetX: number,
+	offsetY: number,
+	scale: number,
+	width: number,
+	height: number,
+	ids: Uint32Array
+) {
 	const ctx = canvas.getContext("2d");
 	if (ctx === null) {
 		throw new Error("failed to get drawing context");
 	}
 
-	ctx.clearRect(0, 0, 720, 720);
+	ctx.clearRect(0, 0, width, height);
+
 	// ctx.strokeStyle = "#888888";
 	// for (let i = 0; i < edge_count; i++) {
 	// 	const s = source[i] - 1;
@@ -52,8 +68,8 @@ export function render(canvas: HTMLCanvasElement, offsetX: number, offsetY: numb
 		const i = idx - 1;
 		const r = getRadius(scale, window.z[i]);
 
-		const node_x = project(window.x[i], offsetX, scale);
-		const node_y = project(window.y[i], offsetY, scale);
+		const [node_x, node_y] = project([window.x[i], window.y[i]], offsetX, offsetY, scale, width, height);
+
 		ctx.beginPath();
 		ctx.arc(node_x, node_y, Math.round(r), 0, 2 * Math.PI);
 		ctx.fill();

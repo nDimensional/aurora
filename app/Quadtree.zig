@@ -3,7 +3,12 @@ const std = @import("std");
 const forces = @import("forces.zig");
 const Quadtree = @This();
 
-pub const Quadrant = enum { sw, nw, se, ne };
+pub const Quadrant = enum(u2) {
+    ne = 0,
+    nw = 1,
+    sw = 2,
+    se = 3,
+};
 
 pub const Area = packed struct {
     s: f32 = 0,
@@ -29,14 +34,28 @@ pub const Area = packed struct {
 
     pub fn divide(area: Area, quadrant: Quadrant) Area {
         const s = area.s / 2;
-        const delta: @Vector(2, f32) = switch (quadrant) {
-            .sw => .{ -s, -s },
-            .nw => .{ -s, s },
-            .se => .{ s, -s },
-            .ne => .{ s, s },
+
+        var delta: @Vector(2, f32) = switch (quadrant) {
+            .sw => .{ -1, -1 },
+            .nw => .{ -1, 1 },
+            .se => .{ 1, -1 },
+            .ne => .{ 1, 1 },
         };
 
+        delta *= @splat(s / 2);
+
         return .{ .s = s, .c = area.c + delta };
+    }
+
+    pub fn contains(area: Area, point: @Vector(2, f32)) bool {
+        const s = area.s / 2;
+        const min_x = area.c[0] - s;
+        const max_x = area.c[0] + s;
+        const min_y = area.c[1] - s;
+        const max_y = area.c[1] + s;
+        if (point[0] < min_x or max_x < point[0]) return false;
+        if (point[1] < min_y or max_y < point[1]) return false;
+        return true;
     }
 };
 
@@ -81,16 +100,16 @@ pub const Body = packed struct {
 area: Area,
 tree: std.ArrayList(Body),
 
-pub fn init(allocator: std.mem.Allocator, s: f32) Quadtree {
-    return .{ .tree = std.ArrayList(Body).init(allocator), .area = .{ .s = s } };
+pub fn init(allocator: std.mem.Allocator, area: Area) Quadtree {
+    return .{ .tree = std.ArrayList(Body).init(allocator), .area = area };
 }
 
 pub fn deinit(self: *Quadtree) void {
     self.tree.deinit();
 }
 
-pub fn reset(self: *Quadtree, s: f32) void {
-    self.area = .{ .s = s };
+pub fn reset(self: *Quadtree, area: Area) void {
+    self.area = area;
     self.tree.clearRetainingCapacity();
 }
 
@@ -138,13 +157,17 @@ fn insertNode(self: *Quadtree, body: u32, area: Area, idx: u32, position: @Vecto
     }
 }
 
-pub fn getForce(self: *Quadtree, repulsion: f32, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
-    return self.getForceBody(repulsion, 0, self.area.s, p, mass);
+pub fn getForce(self: Quadtree, repulsion: f32, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
+    if (self.tree.items.len == 0) {
+        return .{ 0, 0 };
+    } else {
+        return self.getForceBody(repulsion, 0, self.area.s, p, mass);
+    }
 }
 
 const threshold = 0.5;
 
-fn getForceBody(self: *Quadtree, repulsion: f32, body: u32, s: f32, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
+fn getForceBody(self: Quadtree, repulsion: f32, body: u32, s: f32, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
     if (body >= self.tree.items.len) {
         @panic("index out of range");
     }

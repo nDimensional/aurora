@@ -1,87 +1,64 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { Canvas } from "./Canvas.js";
-import { map } from "./utils.js";
-import "./api.js";
-
-const ranges = {
-	attraction: [0.00005, 0.002],
-	repulsion: [50, 200],
-	temperature: [0.005, 0.5],
-} as const;
-
-const scale = {
-	attraction: {
-		to: (value: number) => map(0, 100, ...ranges.attraction, value),
-		from: (value: number) => map(...ranges.attraction, 0, 100, value),
-	},
-	repulsion: {
-		to: (value: number) => map(0, 100, ...ranges.repulsion, value),
-		from: (value: number) => map(...ranges.repulsion, 0, 100, value),
-	},
-	temperature: {
-		to: (value: number) => map(0, 100, ...ranges.temperature, value),
-		from: (value: number) => map(...ranges.temperature, 0, 100, value),
-	},
-};
+import { ControlPanel } from "./ControlPanel.js";
 
 export const App: React.FC<{}> = ({}) => {
-	const handleSave = useCallback(() => {
-		window.save(api);
+	const [offsetX, setOffsetX] = useState(0);
+	const [offsetY, setOffsetY] = useState(0);
+	const [zoom, setZoom] = useState(0);
+
+	const handleReset = useCallback(() => {
+		setOffsetX(0);
+		setOffsetY(0);
+		setZoom(0);
 	}, []);
 
-	const handleTick = useCallback(() => {
-		window.tick(api);
-	}, []);
+	const [width, setWidth] = useState(720);
+	const [height, setHeight] = useState(720);
 
-	const [attraction, setAttractionScale] = useState(scale.attraction.from(window.attraction));
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	useEffect(() => {
+		if (containerRef.current === null) {
+			return;
+		}
 
-	const [repulsion, setRepulsionScale] = useState(scale.repulsion.from(window.repulsion));
+		const observer = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const { width, height } = entry.contentRect;
+				// const width = entry.target.scrollWidth;
+				// const height = entry.target.scrollHeight;
 
-	const [temperature, setTemperatureScale] = useState(scale.temperature.from(window.temperature));
+				console.log(`width: ${width}, height: ${height}`);
+				setWidth(width);
+				setHeight(height);
+			}
+		});
 
-	const handleAttractionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-		const attraction = event.target.valueAsNumber;
-		setAttractionScale(attraction);
-		window.setAttraction(api, scale.attraction.to(attraction));
-	}, []);
-
-	const handleRepulsionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-		const repulsion = event.target.valueAsNumber;
-		setRepulsionScale(repulsion);
-		window.setRepulsion(api, scale.repulsion.to(repulsion));
-	}, []);
-
-	const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-		const temperature = event.target.valueAsNumber;
-		setTemperatureScale(temperature);
-		window.setTemperature(api, scale.temperature.to(temperature));
+		observer.observe(containerRef.current);
 	}, []);
 
 	return (
-		<div style={{ display: "flex", flexDirection: "row", gap: 8 }}>
-			<div style={{ display: "flex", flexDirection: "column", alignItems: "end" }}>
-				<div>
-					<label>Attraction: </label>
-					<input type="range" min="0" max="100" step="1" value={attraction} onChange={handleAttractionChange} />
-				</div>
-				<code>{scale.attraction.to(attraction).toPrecision(4)}</code>
-				<div>
-					<label>Repulsion: </label>
-					<input type="range" min="0" max="100" step="1" value={repulsion} onChange={handleRepulsionChange} />
-				</div>
-				<code>{scale.repulsion.to(repulsion).toPrecision(4)}</code>
-				<div>
-					<label>Temperature: </label>
-					<input type="range" min="0" max="100" step="1" value={temperature} onChange={handleTemperatureChange} />
-				</div>
-				<code>{scale.attraction.to(temperature).toPrecision(4)}</code>
-				<div style={{ marginTop: "1em", display: "flex", gap: "1em" }}>
-					<button onClick={handleTick}>Tick</button>
-					<button onClick={handleSave}>Save</button>
-				</div>
+		<div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "row", gap: 8 }}>
+			<div style={{ padding: "1em 0.5em" }}>
+				<ControlPanel onReset={handleReset} />
+				<code>
+					{offsetX.toFixed(0)}, {offsetY.toFixed(0)}, {zoom}
+				</code>
 			</div>
-			<Canvas />
+
+			<div ref={containerRef} style={{ flex: 1, overflowX: "hidden", overflowY: "hidden" }}>
+				<Canvas
+					width={width}
+					height={height}
+					offsetX={offsetX}
+					setOffsetX={setOffsetX}
+					offsetY={offsetY}
+					setOffsetY={setOffsetY}
+					zoom={zoom}
+					setZoom={setZoom}
+				/>
+			</div>
 		</div>
 	);
 };

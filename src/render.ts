@@ -70,10 +70,16 @@ export function render(
 
 		const [node_x, node_y] = project([window.x[i], window.y[i]], offsetX, offsetY, scale, width, height);
 
+		// if (r < 2) {
+		// 	ctx.rect(node_x - r, node_y - r, r * 2, r * 2);
+		// 	ctx.fill();
+		// } else {
 		ctx.beginPath();
-		ctx.arc(node_x, node_y, Math.round(r), 0, 2 * Math.PI);
+		ctx.arc(node_x, node_y, r, 0, 2 * Math.PI);
 		ctx.fill();
 		ctx.closePath();
+		// }
+
 		n += 1;
 	}
 }

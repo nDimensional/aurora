@@ -14,8 +14,8 @@ export const App: React.FC<{}> = ({}) => {
 		setZoom(0);
 	}, []);
 
-	const [width, setWidth] = useState(720);
-	const [height, setHeight] = useState(720);
+	const [width, setWidth] = useState(0);
+	const [height, setHeight] = useState(0);
 
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	useEffect(() => {
@@ -26,10 +26,6 @@ export const App: React.FC<{}> = ({}) => {
 		const observer = new ResizeObserver((entries) => {
 			for (const entry of entries) {
 				const { width, height } = entry.contentRect;
-				// const width = entry.target.scrollWidth;
-				// const height = entry.target.scrollHeight;
-
-				console.log(`width: ${width}, height: ${height}`);
 				setWidth(width);
 				setHeight(height);
 			}

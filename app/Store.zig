@@ -2,34 +2,28 @@ const std = @import("std");
 
 const sqlite = @import("sqlite");
 
-const Context = @import("JavaScriptCore/Context.zig");
+const ul = @import("ul");
+const Context = ul.JavaScriptCore.Context;
 
 const Quadtree = @import("Quadtree.zig");
-
 const forces = @import("forces.zig");
-const c = @import("c.zig");
 
 const Store = @This();
 
+const UpdateParams = struct { x: f32, y: f32, idx: u32 };
 pub const AreaParams = struct { minX: f32, maxX: f32, minY: f32, maxY: f32, minZ: f32 };
 pub const AreaResult = struct { idx: u32 };
 
-const BoundingBoxParams = struct {};
-const BoundingBoxResult = struct { bound: f32 = 0 };
-
 pub const Count = struct { count: usize };
 
-const node_pool_size = 8;
-const edge_pool_size = 8;
+const node_pool_size = 16;
+const edge_pool_size = 16;
 
 allocator: std.mem.Allocator,
 prng: std.rand.Xoshiro256 = std.rand.Xoshiro256.init(0),
 db: sqlite.Database,
 
-// select_min_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-// select_max_x: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-// select_min_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
-// select_max_y: sqlite.Statement(BoundingBoxParams, BoundingBoxResult),
+update: sqlite.Statement(UpdateParams, void),
 select_ids: sqlite.Statement(AreaParams, AreaResult),
 ids: std.ArrayList(u32),
 
@@ -50,8 +44,7 @@ max_x: f32 = 0,
 node_forces: []@Vector(2, f32) = undefined,
 edge_forces: [edge_pool_size][]@Vector(2, f32) = undefined,
 
-quadtree: Quadtree,
-// quads: [4]Quadtree = undefined,
+quads: [4]Quadtree = undefined,
 
 attraction: f32 = 0.0001,
 repulsion: f32 = 100.0,
@@ -61,6 +54,10 @@ timer: std.time.Timer,
 
 pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
     const db = try sqlite.Database.init(.{ .path = path });
+
+    const update = try db.prepare(UpdateParams, void,
+        \\ UPDATE atlas SET minX = :x, maxX = :x, minY = :y, maxY = :y WHERE idx = :idx
+    );
 
     const select_ids = try db.prepare(AreaParams, AreaResult,
         \\ SELECT idx FROM atlas WHERE :minX <= minX AND maxX <= :maxX AND :minY <= minY AND maxY <= :maxY AND :minZ <= minZ
@@ -72,18 +69,16 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
         .allocator = allocator,
         .db = db,
 
+        .update = update,
         .select_ids = select_ids,
         .ids = std.ArrayList(u32).init(allocator),
-
-        .quadtree = Quadtree.init(allocator, area),
-
         .timer = try std.time.Timer.start(),
     };
 
-    // for (0..store.quads.len) |i| {
-    //     const q = @as(u2, @intCast(i));
-    //     store.quads[i] = Quadtree.init(allocator, area.divide(@enumFromInt(q)));
-    // }
+    for (0..store.quads.len) |i| {
+        const q = @as(u2, @intCast(i));
+        store.quads[i] = Quadtree.init(allocator, area.divide(@enumFromInt(q)));
+    }
 
     {
         const count_edges = try store.db.prepare(struct {}, Count, "SELECT count(*) as count FROM edges");
@@ -163,13 +158,13 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
 }
 
 pub fn deinit(self: *Store) void {
+    self.update.deinit();
     self.select_ids.deinit();
     self.db.deinit();
 
     self.ids.deinit();
 
-    self.quadtree.deinit();
-    // inline for (self.quads) |*q| q.deinit();
+    inline for (self.quads) |*q| q.deinit();
 
     self.allocator.free(self.source);
     self.allocator.free(self.target);
@@ -222,30 +217,19 @@ pub fn tick(self: *Store) !void {
     self.timer.reset();
 
     {
-        try self.rebuild();
+        const s = try self.getBoundingSize();
+        const area = Quadtree.Area{ .s = s };
 
-        // const s = try self.getBoundingSize();
-        // const area = Quadtree.Area{ .s = s };
-        // std.log.info("global area: {any}", .{area});
+        var pool: [4]std.Thread = undefined;
+        for (0..4) |i| {
+            const tree = &self.quads[i];
+            tree.reset(area.divide(@enumFromInt(i)));
+            pool[i] = try std.Thread.spawn(.{}, rebuildQuad, .{ self, tree });
+        }
 
-        // std.log.info("got bounding size in {d}ms", .{self.timer.lap() / 1_000_000});
+        for (0..4) |i| pool[i].join();
 
-        // // var pool: [4]std.Thread = undefined;
-        // for (0..4) |i| {
-        //     const tree = &self.quads[i];
-        //     const q: Quadtree.Quadrant = @enumFromInt(i);
-        //     // std.log.info("rebuilding {any}", .{q});
-        //     const a = area.divide(q);
-        //     // std.log.info("resizing to s={d:.3}, c=({d:.3}, {d:.3})", .{ a.s, a.c[0], a.c[1] });
-        //     tree.reset(a);
-        //     try self.rebuildQuad(tree);
-
-        //     // std.log.info("rebuildQuad {any} in {d}ms ({d} nodes)", .{ q, self.timer.lap() / 1_000_000, tree.tree.items.len });
-        //     // pool[i] = try std.Thread.spawn(.{}, rebuildQuad, .{ self, tree });
-        // }
-
-        // for (0..4) |i| pool[i].join();
-        // std.log.info("rebuilt quadtree in {d}ms", .{self.timer.lap() / 1_000_000});
+        std.log.info("rebuilt quadtree in {d}ms", .{self.timer.lap() / 1_000_000});
     }
 
     {
@@ -258,7 +242,7 @@ pub fn tick(self: *Store) !void {
 
         for (0..node_pool_size) |i| pool[i].join();
 
-        // std.log.info("applied node forces in {d}ms", .{self.timer.lap() / 1_000_000});
+        std.log.info("applied node forces in {d}ms", .{self.timer.lap() / 1_000_000});
     }
 
     {
@@ -271,7 +255,7 @@ pub fn tick(self: *Store) !void {
 
         for (0..edge_pool_size) |i| pool[i].join();
 
-        // std.log.info("applied edge forces in {d}ms", .{self.timer.lap() / 1_000_000});
+        std.log.info("applied edge forces in {d}ms", .{self.timer.lap() / 1_000_000});
     }
 
     self.min_x = 0;
@@ -323,42 +307,24 @@ fn updateNodeForces(self: *Store, min: usize, max: usize, node_forces: []@Vector
         const p = @Vector(2, f32){ self.x[i], self.y[i] };
         const mass = forces.getMass(self.z[i]);
 
-        // for (self.quads) |tree| {
-        //     node_forces[i] += tree.getForce(self.repulsion, p, mass);
-        // }
-
-        node_forces[i] += self.quadtree.getForce(self.repulsion, p, mass);
+        for (self.quads) |tree| node_forces[i] += tree.getForce(self.repulsion, p, mass);
     }
 }
 
-pub fn rebuild(self: *Store) !void {
-    const s = try self.getBoundingSize();
-    self.quadtree.reset(.{ .s = s });
+pub fn rebuildQuad(self: *Store, tree: *Quadtree) !void {
+    var timer = try std.time.Timer.start();
 
     var i: u32 = 0;
     while (i < self.node_count) : (i += 1) {
-        const x = self.x[i];
-        const y = self.y[i];
-        const mass = forces.getMass(self.z[i]);
-        try self.quadtree.insert(i + 1, .{ x, y }, mass);
+        const p = @Vector(2, f32){ self.x[i], self.y[i] };
+        if (tree.area.contains(p)) {
+            const mass = forces.getMass(self.z[i]);
+            try tree.insert(i + 1, p, mass);
+        }
     }
+
+    std.log.info("rebuildQuad in {d}ms ({d} nodes)", .{ timer.read() / 1_000_000, tree.tree.items.len });
 }
-
-// pub fn rebuildQuad(self: *Store, tree: *Quadtree) !void {
-//     var timer = try std.time.Timer.start();
-
-//     var i: u32 = 0;
-//     while (i < self.node_count) : (i += 1) {
-//         const p = @Vector(2, f32){ self.x[i], self.y[i] };
-//         // std.log.info("contains ({d:.3}, {d:.3}): {any}", .{ p[0], p[1], tree.area.contains(p) });
-//         if (tree.area.contains(p)) {
-//             const mass = forces.getMass(self.z[i]);
-//             try tree.insert(i + 1, p, mass);
-//         }
-//     }
-
-//     std.log.info("rebuildQuad in {d}ms ({d} nodes)", .{ timer.read() / 1_000_000, tree.tree.items.len });
-// }
 
 fn getNodeForce(self: *Store, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
     var force = @Vector(2, f32){ 0, 0 };
@@ -370,13 +336,25 @@ fn getNodeForce(self: *Store, p: @Vector(2, f32), mass: f32) @Vector(2, f32) {
 }
 
 pub fn save(self: *Store) !void {
-    const Node = struct { x: f32, y: f32, idx: u32 };
-    const update = try self.db.prepare(Node, void, "UPDATE atlas SET minX = :x, maxX = :x, minY = :y, maxY = :y WHERE idx = :idx");
-    defer update.deinit();
+    // const Node = struct { x: f32, y: f32, idx: u32 };
+    // const update = try self.db.prepare(Node, void, "UPDATE atlas SET minX = :x, maxX = :x, minY = :y, maxY = :y WHERE idx = :idx");
+    // defer update.deinit();
+
+    {
+        const begin = try self.db.prepare(struct {}, void, "BEGIN TRANSACTION");
+        defer begin.deinit();
+        try begin.exec(.{});
+    }
 
     for (0..self.node_count) |i| {
         const idx: u32 = @intCast(i + 1);
-        try update.exec(.{ .x = self.x[i], .y = self.y[i], .idx = idx });
+        try self.update.exec(.{ .x = self.x[i], .y = self.y[i], .idx = idx });
+    }
+
+    {
+        const commit = try self.db.prepare(struct {}, void, "COMMIT TRANSACTION");
+        defer commit.deinit();
+        try commit.exec(.{});
     }
 }
 

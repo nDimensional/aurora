@@ -127,7 +127,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 	const refreshIds = useDebouncedCallback(
 		(area: { minX: number; maxX: number; minY: number; maxY: number; minZ: number }) => {
-			idsRef.current = window.refresh(window.api, area.minX, area.maxX, area.minY, area.maxY, area.minZ);
+			idsRef.current = window.env.refresh(area.minX, area.maxX, area.minY, area.maxY, area.minZ);
 		},
 		100,
 		{ leading: true, maxWait: 200 }
@@ -155,8 +155,6 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 		<canvas
 			autoFocus
 			tabIndex={1}
-			// width={720}
-			// height={720}
 			width={props.width}
 			height={props.height}
 			ref={canvasRef}

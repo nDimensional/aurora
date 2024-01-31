@@ -1,26 +1,15 @@
 const std = @import("std");
 
-const c = @import("c.zig");
-
-const Platform = @import("Ultralight/Platform.zig");
-const Config = @import("Ultralight/Config.zig");
-const View = @import("Ultralight/View.zig");
-
-const App = @import("AppCore/App.zig");
-const Window = @import("AppCore/Window.zig");
-const Overlay = @import("AppCore/Overlay.zig");
-const Settings = @import("AppCore/Settings.zig");
-
-const File = @import("File.zig");
-
-const fs = @import("filesystem.zig");
+const ul = @import("ul");
+const Platform = ul.Ultralight.Platform;
 
 const Environment = @import("Environment.zig");
 
 pub fn main() !void {
     try std.io.getStdOut().writer().print("\n", .{});
 
-    Platform.setFileSystem(fs.filesystem);
+    Platform.setFileSystem(Platform.filesystem);
+    // Platform.setLogger(Platform.logger);
 
     var env: Environment = undefined;
     try env.init();

@@ -121,6 +121,10 @@ pub fn insert(self: *Quadtree, idx: u32, position: @Vector(2, f32), mass: f32) !
     if (self.tree.items.len == 0) {
         try self.tree.append(Body{ .idx = idx, .center = position, .mass = mass });
     } else {
+        if (self.area.s == 0) {
+            @panic("expected self.area.s > 0");
+        }
+
         try self.insertNode(0, self.area, idx, position, mass);
     }
 }
@@ -135,6 +139,10 @@ fn insertNode(self: *Quadtree, body: u32, area: Area, idx: u32, position: @Vecto
     }
 
     if (self.tree.items[body].idx != 0) {
+        if (@reduce(.And, self.tree.items[body].center == position)) {
+            @panic("position conflict");
+        }
+
         const index: u32 = @intCast(self.tree.items.len);
         const a = self.tree.items[body];
         try self.tree.append(a);
@@ -180,6 +188,7 @@ fn getForceBody(self: Quadtree, repulsion: f32, body: u32, s: f32, p: @Vector(2,
         const delta = node.center - p;
         const norm = @reduce(.Add, delta * delta);
         const d = std.math.sqrt(norm);
+
         if (s / d < threshold) {
             return forces.getRepulsion(repulsion, p, mass, node.center, node.mass);
         } else {

@@ -4,26 +4,27 @@ const LazyPath = std.Build.LazyPath;
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    _ = optimize;
 
     const app = b.addExecutable(.{
         .name = "aurora",
         .root_source_file = LazyPath.relative("./app/main.zig"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = optimize,
     });
 
     const sqlite = b.dependency("sqlite", .{ .SQLITE_ENABLE_RTREE = true });
+    const ultralight = b.dependency("ultralight", .{ .SDK = @as([]const u8, "SDK") });
 
     app.root_module.addImport("sqlite", sqlite.module("sqlite"));
+    app.root_module.addImport("ul", ultralight.module("ul"));
 
-    app.addRPath(LazyPath.relative("SDK/bin"));
-    app.addLibraryPath(LazyPath.relative("SDK/bin"));
-    app.addIncludePath(LazyPath.relative("SDK/include"));
-    app.linkSystemLibrary("Ultralight");
-    app.linkSystemLibrary("UltralightCore");
-    app.linkSystemLibrary("WebCore");
-    app.linkSystemLibrary("AppCore");
+    // app.addRPath(LazyPath.relative("SDK/bin"));
+    // app.addLibraryPath(LazyPath.relative("SDK/bin"));
+    // app.addIncludePath(LazyPath.relative("SDK/include"));
+    // app.linkSystemLibrary("Ultralight");
+    // app.linkSystemLibrary("UltralightCore");
+    // app.linkSystemLibrary("WebCore");
+    // app.linkSystemLibrary("AppCore");
 
     app.linkLibC();
     b.installArtifact(app);

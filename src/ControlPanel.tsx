@@ -30,11 +30,11 @@ export interface ControlPanelProps {
 
 export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 	const handleSave = useCallback(() => {
-		window.save(api);
+		window.env.save();
 	}, []);
 
 	const handleTick = useCallback(() => {
-		window.tick(api);
+		window.env.tick();
 	}, []);
 
 	const [attraction, setAttractionScale] = useState(scale.attraction.from(window.attraction));
@@ -46,19 +46,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 	const handleAttractionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const attraction = event.target.valueAsNumber;
 		setAttractionScale(attraction);
-		window.setAttraction(api, scale.attraction.to(attraction));
+		window.env.setAttraction(scale.attraction.to(attraction));
 	}, []);
 
 	const handleRepulsionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const repulsion = event.target.valueAsNumber;
 		setRepulsionScale(repulsion);
-		window.setRepulsion(api, scale.repulsion.to(repulsion));
+		window.env.setRepulsion(scale.repulsion.to(repulsion));
 	}, []);
 
 	const handleTemperatureChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const temperature = event.target.valueAsNumber;
 		setTemperatureScale(temperature);
-		window.setTemperature(api, scale.temperature.to(temperature));
+		window.env.setTemperature(scale.temperature.to(temperature));
 	}, []);
 
 	return (

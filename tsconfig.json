@@ -5,6 +5,7 @@
 		"esModuleInterop": true,
 		"jsx": "react",
 		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
+		"moduleResolution": "NodeNext",
+		"types": ["vite/client", "@webgpu/types"]
 	}
 }

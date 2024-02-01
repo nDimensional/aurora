@@ -50,11 +50,15 @@ pub fn init(env: *Environment) !void {
 
     env.app = App.create(env.settings, env.config);
 
-    const monitor = env.app.getMainMonitor();
-    env.window = Window.create(monitor, .{ .width = 1200, .height = 800, .tilted = true, .resizable = true });
+    env.window = Window.create(
+        env.app.getMainMonitor(),
+        .{ .width = 1200, .height = 800, .tilted = true, .resizable = true },
+    );
+
     env.window.setResizeCallback(Environment, env, &onWindowResize);
 
     env.overlay = Overlay.create(env.window, env.window.getWidth(), env.window.getHeight(), 0, 0);
+
     env.view = env.overlay.getView();
     env.view.setWindowObjectReadyCallback(Environment, env, &onWindowReady);
     env.view.setDOMReadyCallback(Environment, env, &onDOMReady);

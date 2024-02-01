@@ -1,3 +1,14 @@
 import { defineConfig } from "vite";
 
-export default defineConfig({});
+export default defineConfig({
+	server: {
+		// hmr: false,
+		// headers: {
+		// 	"Cross-Origin-Opener-Policy": "same-origin",
+		// 	"Cross-Origin-Embedder-Policy": "require-corp",
+		// },
+	},
+	optimizeDeps: {
+		exclude: ["@sqlite.org/sqlite-wasm"],
+	},
+});

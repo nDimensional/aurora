@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Renderer } from "./Renderer.js";
 import { assert } from "./utils.js";
+import { Store } from "./Store.js";
 
 const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
@@ -16,6 +17,7 @@ export const App: React.FC<{}> = ({}) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const rendererRef = useRef<Renderer | null>(null);
+	const storeRef = useRef<Store | null>(null);
 
 	const [width, setWidth] = useState(600);
 	const [height, setHeight] = useState(400);
@@ -30,10 +32,19 @@ export const App: React.FC<{}> = ({}) => {
 	const [isDragging, setIsDragging] = useState(false);
 	const isDraggingRef = useRef(isDragging);
 
+	const init = useCallback(async (canvas: HTMLCanvasElement) => {
+		const store = await Store.create();
+		const renderer = await Renderer.create(canvas, store.nodeCount, store.nodes());
+		storeRef.current = store;
+		rendererRef.current = renderer;
+	}, []);
+
 	useEffect(() => {
 		if (canvasRef.current === null || containerRef.current === null) {
 			return;
 		}
+
+		init(canvasRef.current);
 
 		new ResizeObserver((entries) => {
 			const entry = entries.find((entry) => entry.target === containerRef.current);
@@ -46,11 +57,6 @@ export const App: React.FC<{}> = ({}) => {
 			setHeight(height);
 			heightRef.current = height;
 		}).observe(containerRef.current);
-
-		Renderer.create(canvasRef.current, [
-			{ x: 10, y: 10 },
-			{ x: -10, y: -10 },
-		]).then((renderer) => void (rendererRef.current = renderer));
 
 		const frame = () => {
 			if (rendererRef.current === null) {
@@ -85,8 +91,9 @@ export const App: React.FC<{}> = ({}) => {
 		mouseYRef.current = event.clientY - canvasRef.current!.offsetLeft;
 
 		if (isDraggingRef.current) {
-			offsetXRef.current += event.movementX;
-			offsetYRef.current -= event.movementY;
+			const scale = getScale(zoomRef.current);
+			offsetXRef.current += event.movementX / scale;
+			offsetYRef.current -= event.movementY / scale;
 		}
 	}, []);
 
@@ -105,7 +112,6 @@ export const App: React.FC<{}> = ({}) => {
 	const handleMouseUp = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		isDraggingRef.current = false;
 		setIsDragging(isDraggingRef.current);
-		console.log(offsetXRef.current, offsetYRef.current);
 	}, []);
 
 	const handleWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {

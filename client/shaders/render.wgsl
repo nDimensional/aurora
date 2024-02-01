@@ -39,7 +39,8 @@ fn vert_node(
     let mouse = vec2f(params.mouse_x, params.mouse_y) * 2 / params.unit;
     return vec4f(clip_space_to_ndc(v * node_radius + mouse), 0, 1);
   } else {
-    return grid_space_to_ndc(v * node_radius + nodes[i] + vec2f(params.offset_x, params.offset_y));
+    // let node = nodes[i];
+    return grid_space_to_ndc(node_radius * v + nodes[i] + vec2f(params.offset_x, params.offset_y));
   }
 }
 

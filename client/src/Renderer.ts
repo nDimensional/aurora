@@ -18,7 +18,7 @@ const params = new Float32Array([
 ]);
 
 export class Renderer {
-	public static async create(canvas: HTMLCanvasElement, nodes: { x: number; y: number }[]) {
+	public static async create(canvas: HTMLCanvasElement, nodeCount: number, nodes: Iterable<{ x: number; y: number }>) {
 		const adapter = await navigator.gpu.requestAdapter();
 		assert(adapter !== null);
 
@@ -35,7 +35,7 @@ export class Renderer {
 		const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
 		context.configure({ device, format: presentationFormat, alphaMode: "premultiplied" });
 
-		return new Renderer(context, device, presentationFormat, nodes);
+		return new Renderer(context, device, presentationFormat, nodeCount, nodes);
 	}
 
 	nodeBuffer: GPUBuffer;
@@ -50,10 +50,11 @@ export class Renderer {
 		readonly context: GPUCanvasContext,
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
-		readonly nodes: { x: number; y: number }[]
+		readonly nodeCount: number,
+		readonly nodes: Iterable<{ x: number; y: number }>
 	) {
 		// initialize node buffer
-		const nodeBufferSize = nodes.length * 2 * 4;
+		const nodeBufferSize = nodeCount * 2 * 4;
 		const nodeBuffer = this.device.createBuffer({
 			label: "nodeBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -63,10 +64,12 @@ export class Renderer {
 
 		{
 			const map = nodeBuffer.getMappedRange(0, nodeBufferSize);
-			const array = new Float32Array(map, 0, nodes.length * 2);
-			for (const [i, { x, y }] of nodes.entries()) {
+			const array = new Float32Array(map, 0, nodeCount * 2);
+			let i = 0;
+			for (const { x, y } of nodes) {
 				array[2 * i] = x;
 				array[2 * i + 1] = y;
+				i++;
 			}
 
 			nodeBuffer.unmap();
@@ -160,6 +163,8 @@ export class Renderer {
 
 		this.bindGroup = bindGroup;
 		this.nodePipeline = nodePipeline;
+
+		console.log("Initialized Renderer");
 	}
 
 	public render(
@@ -200,9 +205,9 @@ export class Renderer {
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
 
 		if (mouseX !== null && mouseY !== null) {
-			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodes.length + 1);
+			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount + 1);
 		} else {
-			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodes.length);
+			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount);
 		}
 
 		passEncoder.end();

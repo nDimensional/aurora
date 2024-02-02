@@ -1,7 +1,7 @@
 import initSqlJs, { SqlJsStatic, Database, Statement } from "sql.js";
 
 import sqlWasmURL from "../sql-wasm.wasm?url";
-import graphURL from "../../data/graph-1000.sqlite?url";
+import graphURL from "../../graph-100000.sqlite?url";
 
 export class Store {
 	public static async create(): Promise<Store> {
@@ -23,7 +23,7 @@ export class Store {
 		return new Store(sqlite, db);
 	}
 
-	public nodeCount = 1000;
+	public nodeCount = 100000;
 
 	select: Statement;
 	constructor(readonly sqlite: SqlJsStatic, readonly db: Database) {

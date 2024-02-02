@@ -5,7 +5,7 @@ import { assert } from "./utils.js";
 const squareIndexBufferData = new Uint16Array([0, 1, 2, 2, 0, 3]);
 const squareVertexBufferData = new Float32Array([-1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0]);
 
-const unit = 5;
+export const unit = 5;
 const params = new Float32Array([
 	unit, // unit
 	0, // width
@@ -18,7 +18,11 @@ const params = new Float32Array([
 ]);
 
 export class Renderer {
-	public static async create(canvas: HTMLCanvasElement, nodeCount: number, nodes: Iterable<{ x: number; y: number }>) {
+	public static async create(
+		canvas: HTMLCanvasElement,
+		nodeCount: number,
+		nodes: Iterable<{ x: number; y: number; z: number }>
+	) {
 		const adapter = await navigator.gpu.requestAdapter();
 		assert(adapter !== null);
 
@@ -33,17 +37,20 @@ export class Renderer {
 		// canvas.height = canvas.clientHeight * devicePixelRatio;
 
 		const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-		context.configure({ device, format: presentationFormat, alphaMode: "premultiplied" });
+		context.configure({
+			device,
+			format: presentationFormat,
+			alphaMode: "premultiplied",
+		});
 
 		return new Renderer(context, device, presentationFormat, nodeCount, nodes);
 	}
 
-	nodeBuffer: GPUBuffer;
 	vertexBuffer: GPUBuffer;
 	indexBuffer: GPUBuffer;
 	paramBuffer: GPUBuffer;
 
-	nodePipeline: GPURenderPipeline;
+	pipeline: GPURenderPipeline;
 	bindGroup: GPUBindGroup;
 
 	constructor(
@@ -51,8 +58,16 @@ export class Renderer {
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
 		readonly nodeCount: number,
-		readonly nodes: Iterable<{ x: number; y: number }>
+		readonly nodes: Iterable<{ x: number; y: number; z: number }>
 	) {
+		const zBufferSize = nodeCount * 4;
+		const zBuffer = this.device.createBuffer({
+			label: "zBuffer",
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+			size: zBufferSize,
+			mappedAtCreation: true,
+		});
+
 		// initialize node buffer
 		const nodeBufferSize = nodeCount * 2 * 4;
 		const nodeBuffer = this.device.createBuffer({
@@ -63,16 +78,23 @@ export class Renderer {
 		});
 
 		{
-			const map = nodeBuffer.getMappedRange(0, nodeBufferSize);
-			const array = new Float32Array(map, 0, nodeCount * 2);
+			const zMap = zBuffer.getMappedRange(0, zBufferSize);
+			const zArray = new Float32Array(zMap, 0, nodeCount);
+
+			const nodeMap = nodeBuffer.getMappedRange(0, nodeBufferSize);
+			const nodeArray = new Float32Array(nodeMap, 0, nodeCount * 2);
 			let i = 0;
-			for (const { x, y } of nodes) {
-				array[2 * i] = x;
-				array[2 * i + 1] = y;
+			for (const { x, y, z } of nodes) {
+				nodeArray[2 * i] = x;
+				nodeArray[2 * i + 1] = y;
+				zArray[i] = Math.sqrt(z);
 				i++;
 			}
 
+			console.log("added %d nodes to buffer", i);
+
 			nodeBuffer.unmap();
+			zBuffer.unmap();
 		}
 
 		// initialize vertex buffer
@@ -118,6 +140,7 @@ export class Renderer {
 			entries: [
 				{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
 				{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -127,6 +150,7 @@ export class Renderer {
 			entries: [
 				{ binding: 0, resource: { buffer: paramBuffer } },
 				{ binding: 1, resource: { buffer: nodeBuffer } },
+				{ binding: 2, resource: { buffer: zBuffer } },
 			],
 		});
 
@@ -135,9 +159,14 @@ export class Renderer {
 			code: renderShader,
 		});
 
-		const nodePipeline = device.createRenderPipeline({
-			label: "nodePipeline",
-			layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+		const pipelineLayout = device.createPipelineLayout({
+			label: "pipelineLayout",
+			bindGroupLayouts: [bindGroupLayout],
+		});
+
+		const pipeline = device.createRenderPipeline({
+			label: "pipeline",
+			layout: pipelineLayout,
 			vertex: {
 				module: renderShaderModule,
 				entryPoint: "vert_node",
@@ -152,17 +181,32 @@ export class Renderer {
 			fragment: {
 				module: renderShaderModule,
 				entryPoint: "frag_node",
-				targets: [{ format: presentationFormat }],
+				targets: [
+					{
+						format: presentationFormat,
+						blend: {
+							color: {
+								srcFactor: "src-alpha",
+								dstFactor: "one-minus-src-alpha",
+								operation: "add",
+							},
+							alpha: {
+								srcFactor: "src-alpha",
+								dstFactor: "one-minus-src-alpha",
+								operation: "add",
+							},
+						},
+					},
+				],
 			},
 		});
 
-		this.nodeBuffer = nodeBuffer;
 		this.indexBuffer = indexBuffer;
 		this.vertexBuffer = vertexBuffer;
 		this.paramBuffer = paramBuffer;
 
 		this.bindGroup = bindGroup;
-		this.nodePipeline = nodePipeline;
+		this.pipeline = pipeline;
 
 		console.log("Initialized Renderer");
 	}
@@ -178,8 +222,8 @@ export class Renderer {
 	) {
 		params[1] = width;
 		params[2] = height;
-		params[3] = offsetX / 5;
-		params[4] = offsetY / 5;
+		params[3] = offsetX / unit;
+		params[4] = offsetY / unit;
 		params[5] = (mouseX ?? 0) / 2;
 		params[6] = (mouseY ?? 0) / 2;
 		params[7] = scale;
@@ -192,23 +236,23 @@ export class Renderer {
 			colorAttachments: [
 				{
 					view: textureView,
-					clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+					clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
 					loadOp: "clear",
 					storeOp: "store",
 				},
 			],
 		});
 
-		passEncoder.setPipeline(this.nodePipeline);
+		passEncoder.setPipeline(this.pipeline);
 		passEncoder.setBindGroup(0, this.bindGroup);
 		passEncoder.setVertexBuffer(0, this.vertexBuffer);
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
 
-		if (mouseX !== null && mouseY !== null) {
-			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount + 1);
-		} else {
-			passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount);
-		}
+		// if (mouseX !== null && mouseY !== null) {
+		// 	passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount + 1);
+		// } else {
+		passEncoder.drawIndexed(squareIndexBufferData.length, this.nodeCount);
+		// }
 
 		passEncoder.end();
 		this.device.queue.submit([commandEncoder.finish()]);

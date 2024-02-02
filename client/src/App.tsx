@@ -7,10 +7,12 @@ const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
 
 const MIN_ZOOM = 0;
-const MAX_ZOOM = 2400;
+const MAX_ZOOM = 2500;
+
+const map = (a: number, b: number, c: number, d: number, x: number) => ((d - c) * (x - a)) / (b - a) + c;
 
 function getScale(zoom: number) {
-	return 0.00000010125 * Math.pow(zoom, 2) - 0.0006525 * zoom + 1;
+	return map(1.6931471805599454, 7.824046010856292, 1, 0.003, Math.log(zoom + 2 * Math.E));
 }
 
 export const App: React.FC<{}> = ({}) => {
@@ -59,9 +61,7 @@ export const App: React.FC<{}> = ({}) => {
 		}).observe(containerRef.current);
 
 		const frame = () => {
-			if (rendererRef.current === null) {
-				return;
-			} else {
+			if (rendererRef.current !== null) {
 				rendererRef.current.render(
 					widthRef.current,
 					heightRef.current,
@@ -71,8 +71,9 @@ export const App: React.FC<{}> = ({}) => {
 					mouseYRef.current,
 					getScale(zoomRef.current)
 				);
-				requestAnimationFrame(frame);
 			}
+
+			requestAnimationFrame(frame);
 		};
 
 		requestAnimationFrame(frame);

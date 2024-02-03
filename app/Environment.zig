@@ -173,8 +173,9 @@ fn tick(env: *Environment, _: Context, args: []const ValueRef) !ValueRef {
     }
 
     env.timer.reset();
-    try env.store.tick();
-    try std.io.getStdOut().writer().print("tick: {d}ms\n", .{env.timer.lap() / 1_000_000});
+    const avg = try env.store.tick();
+
+    try std.io.getStdOut().writer().print("tick: {d}ms ({d})\n", .{ env.timer.lap() / 1_000_000, avg });
 
     return null;
 }

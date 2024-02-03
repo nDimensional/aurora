@@ -213,7 +213,7 @@ pub fn randomize(self: *Store, s: u32) void {
     }
 }
 
-pub fn tick(self: *Store) !void {
+pub fn tick(self: *Store) !f32 {
     self.timer.reset();
 
     {
@@ -264,9 +264,13 @@ pub fn tick(self: *Store) !void {
     self.max_y = 0;
 
     const temperature: @Vector(2, f32) = @splat(self.temperature);
+
+    var sum: f32 = 0;
     for (0..self.node_count) |i| {
         var f = self.node_forces[i];
         inline for (self.edge_forces) |edge_forces| f += edge_forces[i];
+
+        sum += std.math.sqrt(@reduce(.Add, f * f));
 
         f *= temperature;
         self.x[i] += f[0];
@@ -280,6 +284,8 @@ pub fn tick(self: *Store) !void {
         self.node_forces[i] = .{ 0, 0 };
         inline for (self.edge_forces) |edge_forces| edge_forces[i] = .{ 0, 0 };
     }
+
+    return sum / @as(f32, @floatFromInt(self.node_count));
 }
 
 fn updateEdgeForces(self: *Store, min: usize, max: usize, force: []@Vector(2, f32)) void {

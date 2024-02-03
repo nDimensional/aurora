@@ -41,23 +41,23 @@ pub fn init(env: *Environment) !void {
 
     env.timer = try std.time.Timer.start();
 
-    env.config = Config.create();
+    env.config = Config.init();
     env.config.setResourcePathPrefix("SDK/resources/");
 
-    env.settings = Settings.create();
+    env.settings = Settings.init();
     env.settings.setDeveloperName("nDimensional");
     env.settings.setAppName("Aurora");
 
-    env.app = App.create(env.settings, env.config);
+    env.app = App.init(env.settings, env.config);
 
-    env.window = Window.create(
+    env.window = Window.init(
         env.app.getMainMonitor(),
         .{ .width = 1200, .height = 800, .tilted = true, .resizable = true },
     );
 
     env.window.setResizeCallback(Environment, env, &onWindowResize);
 
-    env.overlay = Overlay.create(env.window, env.window.getWidth(), env.window.getHeight(), 0, 0);
+    env.overlay = Overlay.init(env.window, env.window.getWidth(), env.window.getHeight(), 0, 0);
 
     env.view = env.overlay.getView();
     env.view.setWindowObjectReadyCallback(Environment, env, &onWindowReady);
@@ -69,11 +69,11 @@ pub fn init(env: *Environment) !void {
 }
 
 pub fn deinit(self: Environment) void {
-    self.config.destroy();
-    self.settings.destroy();
-    self.app.destroy();
-    self.window.destroy();
-    self.overlay.destroy();
+    self.config.deinit();
+    self.settings.deinit();
+    self.app.deinit();
+    self.window.deinit();
+    self.overlay.deinit();
 
     self.html.deinit();
     self.listener.deinit();

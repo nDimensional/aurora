@@ -11,12 +11,10 @@
     },
     .dependencies = .{
         .ultralight = .{
-            // .url = "https://github.com/nDimensional/zig-ultralight/archive/a1a920842189df45bd16f9195b06ce7804f5f7a9.tar.gz",
-            .url = "http://localhost:8000/zig-ultralight-a1a920842189df45bd16f9195b06ce7804f5f7a9.tar.gz",
-            .hash = "12201d93aa50f0ebfb2e529a00c6c6f51f80ed86a0d857b4034f3037d1f240c7ddea",
+            .url = "https://github.com/nDimensional/zig-ultralight/archive/c0e59fab938bad77e9cc7a67a86a722f331ffb40.tar.gz",
+            .hash = "1220d3bf58a01cc78fd7200e44cb0cb57978e845e50fa00f2214119b35ff16a51ee2",
         },
         .sqlite = .{
-            // .url = "https://github.com/nDimensional/zig-sqlite/archive/9fcf2884504ce1a1de48e90414eca192cdb794da.tar.gz",
             .url = "https://github.com/nDimensional/zig-sqlite/archive/a9942560a6e63deb605d2f3cc9f110a40794bc0b.tar.gz",
             .hash = "1220fc48d43fb4024ce19ae3790e05a599d319d7997983fff1c38a5a8080a73a1138",
         },

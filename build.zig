@@ -18,14 +18,6 @@ pub fn build(b: *std.Build) !void {
     app.root_module.addImport("sqlite", sqlite.module("sqlite"));
     app.root_module.addImport("ul", ultralight.module("ul"));
 
-    // app.addRPath(LazyPath.relative("SDK/bin"));
-    // app.addLibraryPath(LazyPath.relative("SDK/bin"));
-    // app.addIncludePath(LazyPath.relative("SDK/include"));
-    // app.linkSystemLibrary("Ultralight");
-    // app.linkSystemLibrary("UltralightCore");
-    // app.linkSystemLibrary("WebCore");
-    // app.linkSystemLibrary("AppCore");
-
     app.linkLibC();
     b.installArtifact(app);
 

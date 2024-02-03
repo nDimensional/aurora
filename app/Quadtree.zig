@@ -139,16 +139,27 @@ fn insertNode(self: *Quadtree, body: u32, area: Area, idx: u32, position: @Vecto
     }
 
     if (self.tree.items[body].idx != 0) {
-        if (@reduce(.And, self.tree.items[body].center == position)) {
-            @panic("position conflict");
+        const node = self.tree.items[body];
+        if (@reduce(.And, node.center == position)) {
+            const offset: @Vector(2, f32) = @splat(area.s / 4);
+            const i_1: u32 = @intCast(self.tree.items.len);
+            try self.tree.append(.{ .idx = node.idx, .mass = node.mass, .center = node.center - offset });
+
+            self.tree.items[body].idx = 0;
+            self.tree.items[body].setQuadrant(.sw, i_1);
+
+            const i_2: u32 = @intCast(self.tree.items.len);
+            try self.tree.append(.{ .idx = idx, .center = position + offset, .mass = mass });
+            self.tree.items[body].setQuadrant(.ne, i_2);
+
+            return;
+        } else {
+            const index: u32 = @intCast(self.tree.items.len);
+            try self.tree.append(node);
+
+            self.tree.items[body].idx = 0;
+            self.tree.items[body].setQuadrant(area.locate(node.center), index);
         }
-
-        const index: u32 = @intCast(self.tree.items.len);
-        const a = self.tree.items[body];
-        try self.tree.append(a);
-
-        self.tree.items[body].idx = 0;
-        self.tree.items[body].setQuadrant(area.locate(self.tree.items[body].center), index);
     }
 
     self.tree.items[body].update(position, mass);

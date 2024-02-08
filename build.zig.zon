@@ -15,8 +15,8 @@
             .hash = "1220d3bf58a01cc78fd7200e44cb0cb57978e845e50fa00f2214119b35ff16a51ee2",
         },
         .sqlite = .{
-            .url = "https://github.com/nDimensional/zig-sqlite/archive/a9942560a6e63deb605d2f3cc9f110a40794bc0b.tar.gz",
-            .hash = "1220fc48d43fb4024ce19ae3790e05a599d319d7997983fff1c38a5a8080a73a1138",
+            .url = "https://github.com/nDimensional/zig-sqlite/archive/0068f09a819554f1d9916474e4c851fca167ac28.tar.gz",
+            .hash = "122045fa548c2a45965ecf3be834d6f2003247c36fc3b2c6fddd949e7a4c7295118c",
         },
     },
 }

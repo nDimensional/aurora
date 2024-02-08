@@ -10,19 +10,7 @@ if (main === null) {
 	throw new Error("missing main element");
 }
 
+console.log(`attraction: ${window.attraction}`);
+console.log(`repulsion: ${window.repulsion}`);
+console.log(`temperature: ${window.temperature}`);
 createRoot(main).render(<App />);
-
-// const canvas = document.querySelector("canvas");
-// if (canvas === null) {
-//   throw new Error("missing canvas element");
-// }
-
-// canvas.addEventListener("click", () => boop(api));
-
-// function animate() {
-//   // Code for updating the animation goes here
-//   render(canvas!);
-//   requestAnimationFrame(animate); // Request the next frame
-// }
-
-// requestAnimationFrame(animate); // Start the animation loop

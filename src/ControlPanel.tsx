@@ -37,11 +37,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 		window.env.tick();
 	}, []);
 
-	const [attraction, setAttractionScale] = useState(scale.attraction.from(window.attraction));
+	const [attraction, setAttractionScale] = useState(() => scale.attraction.from(window.attraction));
 
-	const [repulsion, setRepulsionScale] = useState(scale.repulsion.from(window.repulsion));
+	const [repulsion, setRepulsionScale] = useState(() => scale.repulsion.from(window.repulsion));
 
-	const [temperature, setTemperatureScale] = useState(scale.temperature.from(window.temperature));
+	const [temperature, setTemperatureScale] = useState(() => scale.temperature.from(window.temperature));
 
 	const handleAttractionChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
 		const attraction = event.target.valueAsNumber;

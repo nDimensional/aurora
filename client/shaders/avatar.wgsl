@@ -14,14 +14,13 @@ const node_radius = 5;
 @group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
 @group(0) @binding(2) var<storage, read> z: array<f32>;
 
-// "grid space"
-// centered at origin for now
+const avatar_dimensions = vec2f(128, 128);
+const texture_dimensions = vec2f(8192, 8192);
+const row_count = 64;
 
-// fn clip_space_to_ndc(v: vec2f) -> vec2f {
-//   let x = v.x / params.width;
-//   let y = v.y / params.height;
-//   return vec2f(2 * x - 1, 1 - 2 * y);
-// }
+@group(1) @binding(0) var ourSampler: sampler;
+@group(1) @binding(1) var ourTexture: texture_2d<f32>;
+@group(1) @binding(2) var<storage> avatars: array<u32>;
 
 fn grid_space_to_ndc(v: vec2f) -> vec4f {
   let x = v.x * params.scale * 2 / params.width;
@@ -38,41 +37,44 @@ fn grid_space_to_clip_space(v: vec2f) -> vec2f {
 
 struct VSOutput {
   @builtin(position) vertex: vec4f,
-  @location(0) center: vec2f,
-  @location(1) radius: f32,
-}
+  @location(0) @interpolate(flat) center: vec2f,
+  @location(1) @interpolate(flat) radius: f32,
+  @location(2) @interpolate(flat) a: u32,
+};
 
 @vertex
 fn vert_node(
-  @builtin(instance_index) i: u32,
+  @builtin(instance_index) a: u32,
   @location(0) v: vec2f,
 ) -> VSOutput {
+  let i = avatars[a] - 1;
   var vsOut: VSOutput;
-
   let r = (node_radius + z[i]) / sqrt(sqrt(params.scale));
   let offset = vec2f(params.offset_x, params.offset_y);
   vsOut.vertex = grid_space_to_ndc(v * r + nodes[i] + offset);
   vsOut.center = grid_space_to_clip_space(nodes[i] + offset);
   vsOut.radius = r * params.scale;
-
+  vsOut.a = a;
   return vsOut;
 }
 
 @fragment
 fn frag_node(
   @builtin(position) pixel: vec4f,
-  @location(0) center: vec2f,
-  @location(1) radius: f32,
+  @location(0) @interpolate(flat) center: vec2f,
+  @location(1) @interpolate(flat) radius: f32,
+  @location(2) @interpolate(flat) a: u32
 ) -> @location(0) vec4f {
-  let dist = distance(pixel.xy, center);
-  let edgeWidth = 2.0; // Width of the anti-aliasing edge, adjust as needed
+  let r = vec2f(radius, radius);
+  let origin = center - r;
+  let p  = (pixel.xy - origin) / (2 * r);
 
-  // Compute how far we are from the edge, normalized to the range [0, 1]
-  // using smoothstep to create a smooth transition
-  let alpha = 1.0 - smoothstep(radius - edgeWidth, radius, dist);
-
-  // Use alpha to blend between transparent outside and solid color inside
-  return vec4f(0, 0, 0, alpha);
-
-  // return vec4f(0, 0, 0, 1);
+  let offset = vec2f(f32(a % row_count), f32(a / row_count));
+  let s = textureSample(ourTexture, ourSampler, (offset + p) * avatar_dimensions / texture_dimensions);
+  
+  if (distance(pixel.xy, center) < radius) {
+    return s;
+  } else {
+    return vec4f(1, 1, 1, 0);
+  }
 }

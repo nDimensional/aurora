@@ -157,14 +157,14 @@ pub fn init(allocator: std.mem.Allocator, path: [*:0]const u8) !Store {
     return store;
 }
 
-pub fn deinit(self: *Store) void {
+pub fn deinit(self: Store) void {
     self.update.deinit();
     self.select_ids.deinit();
     self.db.deinit();
 
     self.ids.deinit();
 
-    inline for (self.quads) |*q| q.deinit();
+    inline for (self.quads) |q| q.deinit();
 
     self.allocator.free(self.source);
     self.allocator.free(self.target);

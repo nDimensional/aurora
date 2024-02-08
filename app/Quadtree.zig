@@ -104,7 +104,7 @@ pub fn init(allocator: std.mem.Allocator, area: Area) Quadtree {
     return .{ .tree = std.ArrayList(Body).init(allocator), .area = area };
 }
 
-pub fn deinit(self: *Quadtree) void {
+pub fn deinit(self: Quadtree) void {
     self.tree.deinit();
 }
 

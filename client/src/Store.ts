@@ -1,6 +1,5 @@
 import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
-import sqlWasmURL from "../sql-wasm-f32.wasm?url";
 import graphURL from "../../data/graph-100.sqlite?url";
 // import graphURL from "../../graph-100000.sqlite?url";
 // import graphURL from "../../graph.sqlite?url";
@@ -43,20 +42,37 @@ export class Store {
 		return new Store(sqlite3, db);
 	}
 
-	public nodeCount = 100;
-	// public nodeCount = 100000;
-	// public nodeCount = 1595050;
+	public nodeCount: number;
 
-	select: PreparedStatement;
-	selectArea: PreparedStatement;
-	constructor(readonly sqlite3: Sqlite3Static, readonly db: Database) {
+	private select: PreparedStatement;
+	private selectArea: PreparedStatement;
+	private queryArea: PreparedStatement;
+
+	private constructor(readonly sqlite3: Sqlite3Static, readonly db: Database) {
 		console.log("Initialized Store");
-		this.select = db.prepare("SELECT minX as x, minY as y, minZ as z FROM atlas");
+
+		const count = db.prepare("SELECT count(*) FROM atlas");
+		if (count.step()) {
+			this.nodeCount = count.getInt(0) ?? 0;
+		} else {
+			throw Error("FJDKLSFJSDK");
+		}
+		count.finalize();
+
+		this.select = db.prepare("SELECT idx, minX, minY, minZ FROM atlas LIMIT $limit");
 		this.selectArea = db.prepare(
 			`SELECT idx FROM atlas WHERE (
-				minX >= $minX AND maxX <= $maxX AND minY >= $minY AND maxY <= $maxY AND minZ >= $minZ
+				($minX <= minX AND maxX <= $maxX) AND
+				($minY <= minY AND maxY <= $maxY) AND
+				($minZ <= minZ)
 			) LIMIT $limit`
 		);
+
+		this.queryArea =
+			db.prepare(`SELECT nodes.did, atlas.minX, atlas.minY FROM nodes INNER JOIN atlas ON nodes.idx = atlas.idx WHERE (
+			(($x - $r) <= minX AND maxX <= ($x + $r)) AND
+			(($y - $r) <= minY AND maxY <= ($y + $r))
+		)`);
 	}
 
 	public close() {
@@ -65,13 +81,15 @@ export class Store {
 		this.db.close();
 	}
 
-	public *nodes(): Iterable<{ x: number; y: number; z: number }> {
+	public *nodes(): Iterable<{ idx: number; x: number; y: number; z: number }> {
 		try {
+			this.select.bind({ $limit: this.nodeCount });
 			while (this.select.step()) {
-				const x = this.select.get(0) as number;
-				const y = this.select.get(1) as number;
-				const z = this.select.get(2) as number;
-				yield { x, y, z };
+				const idx = this.select.getInt(0)!;
+				const x = this.select.getInt(1)!;
+				const y = this.select.getInt(2)!;
+				const z = this.select.getInt(3)!;
+				yield { idx, x, y, z: Math.sqrt(z) };
 				// yield this.select.getAsObject() as { x: number; y: number; z: number };
 			}
 		} finally {
@@ -79,27 +97,49 @@ export class Store {
 		}
 	}
 
-	public *getArea(
-		minX: number,
-		maxX: number,
-		minY: number,
-		maxY: number,
-		minZ: number,
-		limit: number
-	): Iterable<number> {
+	public query(x: number, y: number, r: number): string | null {
+		let min: { did: string; dist2: number } | null = null;
+
+		this.queryArea.bind({ $x: x, $y: y, $r: r });
+		try {
+			while (this.queryArea.step()) {
+				const did = this.queryArea.getString(0)!;
+				const dx = x - this.queryArea.getInt(1)!;
+				const dy = y - this.queryArea.getInt(2)!;
+				const d = dx * dx + dy * dy;
+				if (min === null || d < min.dist2) {
+					min = { did, dist2: d };
+				}
+			}
+
+			return min?.did ?? null;
+		} finally {
+			this.queryArea.reset();
+		}
+	}
+
+	private static areaLimit = 4096;
+	private areaArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
+	private areaArray = new Uint32Array(this.areaArrayBuffer);
+
+	public getArea(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Uint32Array {
 		this.selectArea.bind({
 			$minX: minX,
 			$maxX: maxX,
 			$minY: minY,
 			$maxY: maxY,
 			$minZ: minZ,
-			$limit: limit,
+			$limit: Store.areaLimit,
 		});
 
 		try {
+			let n = 0;
 			while (this.selectArea.step()) {
-				yield this.selectArea.get(0) as number;
+				const idx = this.selectArea.getInt(0)!;
+				this.areaArray[n++] = idx;
 			}
+
+			return this.areaArray.subarray(0, n);
 		} finally {
 			this.selectArea.reset();
 		}

@@ -5,6 +5,7 @@ import avatarShader from "../shaders/avatar.wgsl?raw";
 // import imageURL from "../bafkreibween37i64csnqgu325llyzg4mio633yc2i5gzpf3vffpaxaycym.jpeg?url";
 
 import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS, assert } from "./utils.js";
+import { cache } from "./Cache.js";
 
 const params = new Float32Array([
 	0, // width
@@ -20,7 +21,7 @@ export class Renderer {
 	public static async create(
 		canvas: HTMLCanvasElement,
 		nodeCount: number,
-		nodes: Iterable<{ x: number; y: number; z: number }>
+		nodes: Iterable<{ idx: number; x: number; y: number; z: number }>
 	) {
 		const adapter = await navigator.gpu.requestAdapter();
 		assert(adapter !== null);
@@ -68,7 +69,7 @@ export class Renderer {
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
 		readonly nodeCount: number,
-		readonly nodes: Iterable<{ x: number; y: number; z: number }> // readonly images: ImageBitmap[]
+		readonly nodes: Iterable<{ idx: number; x: number; y: number; z: number }> // readonly images: ImageBitmap[]
 	) {
 		// initialize param buffer
 		const paramBufferSize = params.length * 4;
@@ -109,16 +110,12 @@ export class Renderer {
 
 			const nodeMap = nodeBuffer.getMappedRange(0, nodeBufferSize);
 			const nodeArray = new Float32Array(nodeMap, 0, nodeCount * 2);
-			let i = 0;
-			for (const { x, y, z } of nodes) {
-				console.log(x, y, z);
+			for (const { idx, x, y, z } of nodes) {
+				const i = idx - 1;
 				nodeArray[2 * i] = x;
 				nodeArray[2 * i + 1] = y;
-				zArray[i] = Math.sqrt(z);
-				i++;
+				zArray[i] = z;
 			}
-
-			console.log("added %d nodes to buffer", i);
 
 			nodeBuffer.unmap();
 			zBuffer.unmap();
@@ -221,7 +218,7 @@ export class Renderer {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 		});
 
-		this.sampler = device.createSampler();
+		this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 
 		const avatarBindGroupLayout = device.createBindGroupLayout({
 			label: "avatarBindGroupLayout",
@@ -287,63 +284,40 @@ export class Renderer {
 		console.log("Initialized Renderer");
 	}
 
-	public setAvatars(avatars: Map<number, ImageBitmap>) {
-		const indices = Array.from(avatars.keys());
-		for (const [i, idx] of indices.entries()) {
-			const image = avatars.get(idx)!;
+	public setAvatars(area: Uint32Array) {
+		for (let i = 0; i < area.length; i++) {
+			const idx = area[i];
+			const image = cache.get(idx)!;
 
 			const x = i % ROW_COUNT;
 			const y = Math.floor(i / ROW_COUNT);
-			// const u = (x * AVATAR_DIMENSIONS.width) / TEXTURE_DIMENSIONS.width;
-			// const v = (y * AVATAR_DIMENSIONS.height) / TEXTURE_DIMENSIONS.height;
-			// const [u, v] = [0, 0];
-			console.log({ x, y });
-			const [u, v] = [x, y];
 			this.device.queue.copyExternalImageToTexture(
 				{ source: image },
-				{ texture: this.texture, origin: [u * AVATAR_DIMENSIONS.width, v * AVATAR_DIMENSIONS.height] },
+				{ texture: this.texture, origin: [x * AVATAR_DIMENSIONS.width, y * AVATAR_DIMENSIONS.height] },
 				{ width: image.width, height: image.height }
 			);
 		}
 
-		this.avatarCount = avatars.size;
-		this.device.queue.writeBuffer(this.avatarBuffer, 0, new Uint32Array(indices));
+		this.avatarCount = area.length;
+		this.device.queue.writeBuffer(this.avatarBuffer, 0, area);
 	}
 
-	// public setAvatar(idx: number, image: ImageBitmap) {
-	// 	// if (this.avatarMap.has(idx)) {
-	// 	// 	return;
-	// 	// }
-
-	// 	// this.avatarMap.set(idx, image);
-
-	// 	this.device.queue.writeBuffer(this.avatarBuffer, 0, new Uint32Array([idx - 1]));
-
-	// 	this.device.queue.copyExternalImageToTexture(
-	// 		{ source: image },
-	// 		{ texture: this.texture },
-	// 		{ width: image.width, height: image.height }
-	// 	);
-	// }
-
-	public render(
-		width: number,
-		height: number,
-		offsetX: number,
-		offsetY: number,
-		mouseX: number | null,
-		mouseY: number | null,
-		scale: number
-	) {
+	public setSize(width: number, height: number) {
 		params[0] = width;
 		params[1] = height;
+	}
+
+	public setOffset(offsetX: number, offsetY: number) {
 		params[2] = offsetX;
 		params[3] = offsetY;
-		params[4] = (mouseX ?? 0) / 2;
-		params[5] = (mouseY ?? 0) / 2;
-		params[6] = scale;
-		this.device.queue.writeBuffer(this.paramBuffer, 0, params);
+	}
 
+	public setScale(scale: number) {
+		params[4] = scale;
+	}
+
+	public render() {
+		this.device.queue.writeBuffer(this.paramBuffer, 0, params);
 		const commandEncoder = this.device.createCommandEncoder();
 		const textureView = this.context.getCurrentTexture().createView();
 
@@ -359,18 +333,21 @@ export class Renderer {
 			],
 		});
 
+		// console.log("drawing", this.nodeCount, "nodes");
 		passEncoder.setPipeline(this.nodePipeline);
 		passEncoder.setBindGroup(0, this.nodeBindGroup);
 		passEncoder.setVertexBuffer(0, this.vertexBuffer);
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
 		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.nodeCount);
 
-		passEncoder.setPipeline(this.avatarPipeline);
-		passEncoder.setBindGroup(0, this.nodeBindGroup);
-		passEncoder.setBindGroup(1, this.avatarBindGroup);
-		passEncoder.setVertexBuffer(0, this.vertexBuffer);
-		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
-		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.avatarCount);
+		if (this.avatarCount > 0) {
+			passEncoder.setPipeline(this.avatarPipeline);
+			passEncoder.setBindGroup(0, this.nodeBindGroup);
+			passEncoder.setBindGroup(1, this.avatarBindGroup);
+			passEncoder.setVertexBuffer(0, this.vertexBuffer);
+			passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
+			passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.avatarCount);
+		}
 
 		passEncoder.end();
 

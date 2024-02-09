@@ -3,12 +3,10 @@ struct Params {
   height: f32,
   offset_x: f32,
   offset_y: f32,
-  mouse_x: f32,
-  mouse_y: f32,
   scale: f32,
 };
 
-const node_radius = 5;
+const min_radius = 7;
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
@@ -25,7 +23,7 @@ const node_radius = 5;
 
 fn grid_space_to_ndc(v: vec2f) -> vec4f {
   let x = v.x * params.scale * 2 / params.width;
-  let y = - v.y * params.scale * 2 / params.height;
+  let y = v.y * params.scale * 2 / params.height;
   return vec4f(x, y, 0, 1);
 }
 
@@ -49,10 +47,10 @@ fn vert_node(
 ) -> VSOutput {
   var vsOut: VSOutput;
 
-  let r = (node_radius + z[i]) / sqrt(sqrt(params.scale));
-  let offset = vec2f(params.offset_x, params.offset_y);
-  vsOut.vertex = grid_space_to_ndc(v * r + nodes[i] + offset);
-  vsOut.center = grid_space_to_clip_space(nodes[i] + offset);
+  let r = (min_radius + z[i]);
+  let c = nodes[i] + vec2f(params.offset_x, params.offset_y);
+  vsOut.vertex = grid_space_to_ndc(v * r + c);
+  vsOut.center = grid_space_to_clip_space(c);
   vsOut.radius = r * params.scale;
 
   return vsOut;

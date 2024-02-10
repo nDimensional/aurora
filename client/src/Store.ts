@@ -118,9 +118,15 @@ export class Store {
 		}
 	}
 
-	private static areaLimit = 4096;
+	public static areaLimit = 4096;
 	private areaArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaArray = new Uint32Array(this.areaArrayBuffer);
+
+	// private active: number = 0;
+	// private areaArrays: [Uint32Array, Uint32Array] = [
+	// 	new Uint32Array(this.areaArrayBuffer, 0, Store.areaLimit),
+	// 	new Uint32Array(this.areaArrayBuffer, 4 * Store.areaLimit, Store.areaLimit),
+	// ];
 
 	public getArea(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Uint32Array {
 		this.selectArea.bind({
@@ -139,9 +145,28 @@ export class Store {
 				this.areaArray[n++] = idx;
 			}
 
-			return this.areaArray.subarray(0, n);
+			return this.areaArray.subarray(0, n).sort();
 		} finally {
 			this.selectArea.reset();
 		}
+	}
+}
+
+export class PingPongBuffer {
+	#buffer: ArrayBuffer;
+	#arrays: [Uint32Array, Uint32Array];
+	#active: number = 0;
+
+	constructor(public readonly length: number) {
+		this.#buffer = new ArrayBuffer(4 * length * 2);
+		this.#arrays = [new Uint32Array(this.#buffer, 0, length), new Uint32Array(this.#buffer, 4 * length, length)];
+	}
+
+	public get active(): Uint32Array {
+		return this.#arrays[this.#active];
+	}
+
+	public swap() {
+		this.#active = (this.#active + 1) % 2;
 	}
 }

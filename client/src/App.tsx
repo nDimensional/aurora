@@ -9,7 +9,7 @@ import { assert, getMinZ } from "./utils.js";
 const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
 
-const MIN_ZOOM = 0;
+const MIN_ZOOM = -64;
 // const MAX_ZOOM = 2500;
 const MAX_ZOOM = 2500;
 
@@ -42,8 +42,6 @@ export const App: React.FC<{}> = ({}) => {
 				return;
 			}
 
-			const store = storeRef.current;
-
 			const scale = getScale(zoomRef.current);
 
 			const w = widthRef.current / 2;
@@ -54,9 +52,8 @@ export const App: React.FC<{}> = ({}) => {
 			const maxY = h / scale - offsetYRef.current;
 			const minY = -h / scale - offsetYRef.current;
 			const minZ = getMinZ(scale);
-			// const minZ = 0;
 
-			const area = store.getArea(minX, maxX, minY, maxY, minZ);
+			const area = storeRef.current.getArea(minX, maxX, minY, maxY, minZ);
 			rendererRef.current?.setAvatars(area);
 
 			for (const idx of area) {

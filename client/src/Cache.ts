@@ -10,10 +10,12 @@ export class Cache {
 
 	private readonly images = new Map<number, ImageBitmap>();
 
-	private constructor(private readonly defaultImage: ImageBitmap) {}
+	private constructor(private readonly defaultImage: ImageBitmap) {
+		this.images.set(0, defaultImage);
+	}
 
-	public get(idx: number): ImageBitmap {
-		return this.images.get(idx) ?? this.defaultImage;
+	public get(idx: number): ImageBitmap | undefined {
+		return this.images.get(idx);
 	}
 
 	public has(idx: number): boolean {
@@ -29,22 +31,23 @@ export class Cache {
 			return this.loading.get(idx);
 		}
 
-		const promise = this.fetchImage(idx).finally(() => this.loading.delete(idx));
-		this.loading.set(idx, promise);
-		return promise;
+		const promise = this.fetch(idx).finally(() => this.loading.delete(idx));
+		this.loading.set(idx, promise.then());
+		return promise.then();
 	}
 
-	private async fetchImage(idx: number): Promise<void> {
+	public async fetch(idx: number): Promise<ImageBitmap> {
 		const key = idx.toString(16).padStart(8, "0");
 		const res = await fetch(`https://cdn.ndimensional.xyz/2024-02-08/${key}/avatar`, {});
 		if (res.ok) {
 			const blob = await res.blob();
 			const image = await createImageBitmap(blob, { resizeWidth: width, resizeHeight: height });
 			this.images.set(idx, image);
+			return image;
 		} else {
 			await res.body?.cancel();
-
 			this.images.set(idx, this.defaultImage);
+			return this.defaultImage;
 		}
 	}
 }

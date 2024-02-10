@@ -90,7 +90,6 @@ export class Store {
 				const y = this.select.getInt(2)!;
 				const z = this.select.getInt(3)!;
 				yield { idx, x, y, z: Math.sqrt(z) };
-				// yield this.select.getAsObject() as { x: number; y: number; z: number };
 			}
 		} finally {
 			this.select.reset();
@@ -121,12 +120,6 @@ export class Store {
 	public static areaLimit = 4096;
 	private areaArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaArray = new Uint32Array(this.areaArrayBuffer);
-
-	// private active: number = 0;
-	// private areaArrays: [Uint32Array, Uint32Array] = [
-	// 	new Uint32Array(this.areaArrayBuffer, 0, Store.areaLimit),
-	// 	new Uint32Array(this.areaArrayBuffer, 4 * Store.areaLimit, Store.areaLimit),
-	// ];
 
 	public getArea(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Uint32Array {
 		this.selectArea.bind({

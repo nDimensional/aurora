@@ -362,7 +362,9 @@ export class Renderer {
 	}
 
 	private removeAvatar(idx: number) {
-		this.recycling.push(idx);
+		if (!this.recycling.includes(idx)) {
+			this.recycling.push(idx);
+		}
 	}
 
 	public setAvatars(area: Uint32Array) {

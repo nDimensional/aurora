@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./Renderer.js";
@@ -10,7 +10,6 @@ const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
 
 const MIN_ZOOM = -64;
-// const MAX_ZOOM = 2500;
 const MAX_ZOOM = 2500;
 
 function getScale(zoom: number) {
@@ -149,7 +148,6 @@ export const App: React.FC<{}> = ({}) => {
 		const scale = getScale(zoomRef.current);
 		const x = (mouseXRef.current! - widthRef.current / 2) / scale - offsetXRef.current;
 		const y = (heightRef.current / 2 - mouseYRef.current!) / scale - offsetYRef.current;
-		console.log(x, y);
 		console.log(storeRef.current?.query(x, y, 20));
 	}, []);
 

@@ -29,14 +29,6 @@ export interface ControlPanelProps {
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
-	const handleSave = useCallback(() => {
-		window.env.save();
-	}, []);
-
-	const handleTick = useCallback(() => {
-		window.env.tick();
-	}, []);
-
 	const [attraction, setAttractionScale] = useState(() => scale.attraction.from(window.attraction));
 
 	const [repulsion, setRepulsionScale] = useState(() => scale.repulsion.from(window.repulsion));
@@ -80,8 +72,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 			<code>{scale.attraction.to(temperature).toPrecision(4)}</code>
 			<div style={{ marginTop: "1em", display: "flex", gap: "1em" }}>
 				<button onClick={props.onReset}>Reset</button>
-				<button onClick={handleTick}>Tick</button>
-				<button onClick={handleSave}>Save</button>
+				{/* <button onClick={() => window.env.tick()}>Tick</button> */}
+				<button onClick={() => window.env.save()}>Save</button>
+			</div>
+			<div style={{ marginTop: "1em", marginBottom: "0.5em", display: "flex", gap: "1em" }}>
+				<button onClick={() => window.env.start()}>Start</button>
+				<button onClick={() => window.env.stop()}>Stop</button>
 			</div>
 		</div>
 	);

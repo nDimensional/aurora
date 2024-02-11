@@ -16,8 +16,10 @@ declare global {
 
 declare class Environment {
 	refresh(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Uint32Array;
-	tick(): void;
+	// tick(): void;
 	save(): void;
+	start(): void;
+	stop(): void;
 	setAttraction(value: number): void;
 	setRepulsion(value: number): void;
 	setTemperature(value: number): void;

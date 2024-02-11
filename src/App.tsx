@@ -38,9 +38,12 @@ export const App: React.FC<{}> = ({}) => {
 		<div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "row", gap: 8 }}>
 			<div style={{ padding: "1em 0.5em" }}>
 				<ControlPanel onReset={handleReset} />
-				<code>
-					{offsetX.toFixed(0)}, {offsetY.toFixed(0)}, {zoom}
-				</code>
+				<hr />
+				<div style={{ textAlign: "end" }}>
+					<code>
+						{offsetX.toFixed(0)}, {offsetY.toFixed(0)}, {zoom}
+					</code>
+				</div>
 			</div>
 
 			<div ref={containerRef} style={{ flex: 1, overflowX: "hidden", overflowY: "hidden" }}>

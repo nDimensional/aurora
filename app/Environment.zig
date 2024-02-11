@@ -67,6 +67,8 @@ pub fn init(env: *Environment) !void {
 
     env.html = try File.init("assets/app.html");
     env.listener = Listener.init("dist/index.js");
+    env.runner = null;
+    env.running = false;
 }
 
 pub fn deinit(self: Environment) void {
@@ -215,8 +217,10 @@ fn save(env: *Environment, _: Context, args: []const ValueRef) !ValueRef {
         return error.ARGC;
     }
 
-    std.log.info("save()", .{});
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("saving...\n", .{});
     try env.store.save();
+    try stdout.print("saved!\n", .{});
 
     return null;
 }

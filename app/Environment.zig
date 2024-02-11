@@ -30,14 +30,16 @@ store: Store,
 timer: std.time.Timer,
 
 listener: Listener,
+running: bool = false,
+runner: ?std.Thread = null,
 
 pub fn init(env: *Environment) !void {
     // env.store = try Store.init(std.heap.c_allocator, "data/graph.sqlite");
-    env.store = try Store.init(std.heap.c_allocator, "data/graph-100000.sqlite");
+    // env.store = try Store.init(std.heap.c_allocator, "data/graph-100000.sqlite");
     // env.store = try Store.init(std.heap.c_allocator, "data/graph-10000.sqlite");
     // env.store = try Store.init(std.heap.c_allocator, "data/graph-1000.sqlite");
-    // env.store = try Store.init(std.heap.c_allocator, "data/graph-100.sqlite");
-    // env.store.randomize(7200);
+    env.store = try Store.init(std.heap.c_allocator, "data/graph-100.sqlite");
+    // env.store.randomize(200);
 
     env.timer = try std.time.Timer.start();
 
@@ -60,7 +62,6 @@ pub fn init(env: *Environment) !void {
     env.overlay = Overlay.init(env.window, env.window.getWidth(), env.window.getHeight(), 0, 0);
 
     env.view = env.overlay.getView();
-    env.view.setWindowObjectReadyCallback(Environment, env, &onWindowReady);
     env.view.setDOMReadyCallback(Environment, env, &onDOMReady);
     env.view.setConsoleMessageCallback(Environment, env, &onConsoleMessage);
 
@@ -69,9 +70,10 @@ pub fn init(env: *Environment) !void {
 }
 
 pub fn deinit(self: Environment) void {
+    self.app.deinit();
     self.config.deinit();
     self.settings.deinit();
-    self.app.deinit();
+    self.store.deinit();
     self.window.deinit();
     self.overlay.deinit();
 
@@ -85,29 +87,31 @@ pub fn run(self: *Environment) void {
     self.app.run();
 }
 
-fn onWindowReady(env: *Environment, event: View.WindowObjectReadyEvent) void {
-    const ctx = event.view.lock();
-    defer event.view.unlock();
+fn onDOMReady(env: *Environment, event: View.DOMReadyEvent) void {
+    {
+        const ctx = event.view.lock();
+        defer event.view.unlock();
 
-    ctx.evaluateScript("window.foo = 233232") catch @panic("ctx.evaluateScript failed");
-    ctx.evaluateScript("window.bar = window") catch @panic("ctx.evaluateScript failed");
-    env.store.inject(ctx) catch @panic("store.inject failed");
+        ctx.evaluateScript("window.foo = 233232") catch @panic("ctx.evaluateScript failed");
+        ctx.evaluateScript("window.bar = window") catch @panic("ctx.evaluateScript failed");
+        env.store.inject(ctx) catch @panic("store.inject failed");
 
-    const global = ctx.getGlobal();
+        const global = ctx.getGlobal();
 
-    const class = ctx.createClass(Environment, "Environment", &.{
-        .{ .name = "refresh", .exec = &refresh },
-        .{ .name = "tick", .exec = &tick },
-        .{ .name = "save", .exec = &save },
-        .{ .name = "setAttraction", .exec = &setAttraction },
-        .{ .name = "setRepulsion", .exec = &setRepulsion },
-        .{ .name = "setTemperature", .exec = &setTemperature },
-    });
+        const class = ctx.createClass(Environment, "Environment", &.{
+            .{ .name = "refresh", .exec = &refresh },
+            // .{ .name = "tick", .exec = &tick },
+            .{ .name = "save", .exec = &save },
+            .{ .name = "start", .exec = &start },
+            .{ .name = "stop", .exec = &stop },
+            .{ .name = "setAttraction", .exec = &setAttraction },
+            .{ .name = "setRepulsion", .exec = &setRepulsion },
+            .{ .name = "setTemperature", .exec = &setTemperature },
+        });
 
-    ctx.setProperty(global, "env", class.make(env));
-}
+        ctx.setProperty(global, "env", class.make(env));
+    }
 
-fn onDOMReady(env: *Environment, _: View.DOMReadyEvent) void {
     const js = File.init("dist/index.js") catch @panic("failed to open file");
     defer js.deinit();
 
@@ -145,8 +149,6 @@ fn onUpdate(env: *Environment) void {
 
         result = env.listener.poll() catch return;
     }
-
-    // env.store.tick() catch |err| std.log.err("{any}", .{err});
 }
 
 fn refresh(env: *Environment, ctx: Context, args: []const ValueRef) !ValueRef {
@@ -167,18 +169,46 @@ fn refresh(env: *Environment, ctx: Context, args: []const ValueRef) !ValueRef {
     return try ctx.makeTypedArray(u32, ids);
 }
 
-fn tick(env: *Environment, _: Context, args: []const ValueRef) !ValueRef {
-    if (args.len != 0) {
-        return error.ARGC;
+fn start(env: *Environment, _: Context, _: []const ValueRef) !ValueRef {
+    if (env.runner == null) {
+        env.running = true;
+        env.runner = try std.Thread.spawn(.{}, loop, .{env});
     }
-
-    env.timer.reset();
-    const avg = try env.store.tick();
-
-    try std.io.getStdOut().writer().print("tick: {d}ms ({d})\n", .{ env.timer.lap() / 1_000_000, avg });
 
     return null;
 }
+
+fn loop(env: *Environment) void {
+    const stdout = std.io.getStdOut().writer();
+    env.timer.reset();
+    while (env.running) {
+        const energy = env.store.tick() catch continue;
+        stdout.print("tick: {d}ms ({d})\n", .{ env.timer.lap() / 1_000_000, energy }) catch continue;
+    }
+}
+
+fn stop(env: *Environment, _: Context, _: []const ValueRef) !ValueRef {
+    env.running = false;
+    if (env.runner) |t| {
+        t.join();
+        env.runner = null;
+    }
+
+    return null;
+}
+
+// fn tick(env: *Environment, _: Context, args: []const ValueRef) !ValueRef {
+//     if (args.len != 0) {
+//         return error.ARGC;
+//     }
+
+//     env.timer.reset();
+//     const avg = try env.store.tick();
+
+//     try std.io.getStdOut().writer().print("tick: {d}ms ({d})\n", .{ env.timer.lap() / 1_000_000, avg });
+
+//     return null;
+// }
 
 fn save(env: *Environment, _: Context, args: []const ValueRef) !ValueRef {
     if (args.len != 0) {

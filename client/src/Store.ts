@@ -1,17 +1,19 @@
 import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
-import graphURL from "../../data/graph-100.sqlite?url";
-// import graphURL from "../../graph-100000.sqlite?url";
-// import graphURL from "../../graph.sqlite?url";
+import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export class Store {
+	public static hostURL = "https://cdn.ndimensional.xyz";
+	// public static snapshot = "2024-02-08";
+	public static snapshot = "2024-02-09";
+
 	public static async create(): Promise<Store> {
 		const sqlite3 = await initModule();
 
-		const arrayBuffer = await fetch(graphURL)
-			.then((res) => res.blob())
-			.then((blob) => blob.arrayBuffer());
-		// .then((buffer) => new sqlite.Database(new Uint8Array(buffer)));
+		const fileHandle = await Store.getSnapshot();
+		const file = await fileHandle.getFile();
+		const arrayBuffer = await file.arrayBuffer();
+		const array = new Uint8Array(arrayBuffer);
 
 		/**
 		 * From https://www.sqlite.org/c3ref/deserialize.html:
@@ -21,7 +23,7 @@ export class Store {
 		 * > database P to 0x01 prior to invoking sqlite3_deserialize(D,S,P,N,M,F) to force the
 		 * > database file into rollback mode and work around this limitation.
 		 */
-		const array = new Uint8Array(arrayBuffer);
+		// const array = new Uint8Array(arrayBuffer);
 		array[18] = 0x01;
 		array[19] = 0x01;
 
@@ -32,8 +34,8 @@ export class Store {
 			db.pointer!,
 			"main",
 			p,
-			arrayBuffer.byteLength,
-			arrayBuffer.byteLength,
+			array.length,
+			array.length,
 			sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE | sqlite3.capi.SQLITE_DESERIALIZE_READONLY
 		);
 
@@ -42,7 +44,42 @@ export class Store {
 		return new Store(sqlite3, db);
 	}
 
+	private static async getSnapshot(): Promise<FileSystemFileHandle> {
+		const rootDirectory = await navigator.storage.getDirectory();
+		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
+		try {
+			const snapshotFile = await snapshotDirectory.getFileHandle("atlas.sqlite", { create: false });
+			console.log("found existing file in storage...");
+			return snapshotFile;
+		} catch (err) {
+			console.log({ err });
+			if (err instanceof DOMException && err.name === "NotFoundError") {
+				console.log("creating file handle...");
+				const snapshotFile = await snapshotDirectory.getFileHandle("atlas.sqlite", { create: true });
+				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
+				const res = await fetch(`${Store.hostURL}/${Store.snapshot}/atlas.sqlite.gz`);
+				assert(res.ok && res.body !== null);
+
+				console.log("streaming response to file...");
+				if (res.headers.get("Content-Encoding") === "gzip") {
+					await res.body.pipeTo(writeStream);
+				} else if (res.headers.get("Content-Type") === "application/x-gzip") {
+					const decompress = new DecompressionStream("gzip");
+					await res.body.pipeThrough(decompress).pipeTo(writeStream);
+				} else {
+					throw new Error("unrecognized response stream");
+				}
+
+				console.log("done!");
+				return snapshotFile;
+			} else {
+				throw err;
+			}
+		}
+	}
+
 	public nodeCount: number;
+	public maxZ: number;
 
 	private select: PreparedStatement;
 	private selectArea: PreparedStatement;
@@ -51,13 +88,21 @@ export class Store {
 	private constructor(readonly sqlite3: Sqlite3Static, readonly db: Database) {
 		console.log("Initialized Store");
 
-		const count = db.prepare("SELECT count(*) FROM atlas");
-		if (count.step()) {
-			this.nodeCount = count.getInt(0) ?? 0;
-		} else {
-			throw Error("FJDKLSFJSDK");
+		{
+			const selectCount = db.prepare("SELECT count(*) FROM atlas");
+			assert(selectCount.step());
+			this.nodeCount = selectCount.getInt(0) ?? 0;
+			selectCount.finalize();
 		}
-		count.finalize();
+
+		{
+			const selectMaxZ = db.prepare("SELECT maxZ FROM atlas ORDER BY maxZ DESC LIMIT 1");
+			assert(selectMaxZ.step());
+			this.maxZ = selectMaxZ.getInt(0) ?? 0;
+			selectMaxZ.finalize();
+
+			console.log("maxZ:", this.maxZ);
+		}
 
 		this.select = db.prepare("SELECT idx, minX, minY, minZ FROM atlas LIMIT $limit");
 		this.selectArea = db.prepare(
@@ -68,8 +113,7 @@ export class Store {
 			) LIMIT $limit`
 		);
 
-		this.queryArea =
-			db.prepare(`SELECT nodes.did, atlas.minX, atlas.minY FROM nodes INNER JOIN atlas ON nodes.idx = atlas.idx WHERE (
+		this.queryArea = db.prepare(`SELECT idx, minX, minY, minZ FROM atlas WHERE (
 			(($x - $r) <= minX AND maxX <= ($x + $r)) AND
 			(($y - $r) <= minY AND maxY <= ($y + $r))
 		)`);
@@ -78,16 +122,18 @@ export class Store {
 	public close() {
 		this.select.finalize();
 		this.selectArea.finalize();
+		this.queryArea.finalize();
 		this.db.close();
 	}
 
 	public *nodes(): Iterable<{ idx: number; x: number; y: number; z: number }> {
+		const scale = 1;
 		try {
 			this.select.bind({ $limit: this.nodeCount });
 			while (this.select.step()) {
 				const idx = this.select.getInt(0)!;
-				const x = this.select.getInt(1)!;
-				const y = this.select.getInt(2)!;
+				const x = this.select.getInt(1)! * scale;
+				const y = this.select.getInt(2)! * scale;
 				const z = this.select.getInt(3)!;
 				yield { idx, x, y, z: Math.sqrt(z) };
 			}
@@ -96,32 +142,48 @@ export class Store {
 		}
 	}
 
-	public query(x: number, y: number, r: number): string | null {
-		let min: { did: string; dist2: number } | null = null;
+	public query(x: number, y: number, scale: number): { idx: number; x: number; y: number } | null {
+		const maxR = getRadius(Math.sqrt(this.maxZ), scale);
 
-		this.queryArea.bind({ $x: x, $y: y, $r: r });
+		let target: { idx: number; x: number; y: number; dist: number } | null = null;
+
+		this.queryArea.bind({ $x: x, $y: y, $r: maxR });
 		try {
 			while (this.queryArea.step()) {
-				const did = this.queryArea.getString(0)!;
-				const dx = x - this.queryArea.getInt(1)!;
-				const dy = y - this.queryArea.getInt(2)!;
-				const d = dx * dx + dy * dy;
-				if (min === null || d < min.dist2) {
-					min = { did, dist2: d };
+				const idx = this.queryArea.getInt(0)!;
+				const nodeX = this.queryArea.getInt(1)!;
+				const nodeY = this.queryArea.getInt(2)!;
+				const nodeZ = this.queryArea.getInt(3)!;
+				const dx = x - nodeX;
+				const dy = y - nodeY;
+				const dist = Math.sqrt(dx * dx + dy * dy);
+
+				const r = getRadius(Math.sqrt(nodeZ), scale);
+
+				if (dist < r) {
+					if (target === null || dist < target.dist) {
+						target = { idx, x: nodeX, y: nodeY, dist };
+					}
 				}
 			}
 
-			return min?.did ?? null;
+			if (target !== null) {
+				return { idx: target.idx, x: target.x, y: target.y };
+			} else {
+				return null;
+			}
 		} finally {
 			this.queryArea.reset();
 		}
 	}
 
-	public static areaLimit = 4096;
+	public static areaLimit = ROW_COUNT * COL_COUNT - 1;
 	private areaArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaArray = new Uint32Array(this.areaArrayBuffer);
 
 	public getArea(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Uint32Array {
+		// console.log({ minX, maxX, minY, maxY, minZ });
+
 		this.selectArea.bind({
 			$minX: minX,
 			$maxX: maxX,
@@ -142,24 +204,5 @@ export class Store {
 		} finally {
 			this.selectArea.reset();
 		}
-	}
-}
-
-export class PingPongBuffer {
-	#buffer: ArrayBuffer;
-	#arrays: [Uint32Array, Uint32Array];
-	#active: number = 0;
-
-	constructor(public readonly length: number) {
-		this.#buffer = new ArrayBuffer(4 * length * 2);
-		this.#arrays = [new Uint32Array(this.#buffer, 0, length), new Uint32Array(this.#buffer, 4 * length, length)];
-	}
-
-	public get active(): Uint32Array {
-		return this.#arrays[this.#active];
-	}
-
-	public swap() {
-		this.#active = (this.#active + 1) % 2;
 	}
 }

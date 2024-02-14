@@ -1,3 +1,4 @@
+import { Store } from "./Store.js";
 import { AVATAR_DIMENSIONS } from "./utils.js";
 
 const { width, height } = AVATAR_DIMENSIONS;
@@ -38,7 +39,7 @@ export class Cache {
 
 	public async fetch(idx: number): Promise<ImageBitmap> {
 		const key = idx.toString(16).padStart(8, "0");
-		const res = await fetch(`https://cdn.ndimensional.xyz/2024-02-08/${key}/avatar`, {});
+		const res = await fetch(`${Store.hostURL}/${Store.snapshot}/${key}/avatar`, {});
 		if (res.ok) {
 			const blob = await res.blob();
 			const image = await createImageBitmap(blob, { resizeWidth: width, resizeHeight: height });
@@ -51,5 +52,3 @@ export class Cache {
 		}
 	}
 }
-
-export const cache = await Cache.create();

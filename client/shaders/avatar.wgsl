@@ -4,9 +4,9 @@ struct Params {
   offset_x: f32,
   offset_y: f32,
   scale: f32,
+  min_radius: f32,
+  scale_radius: f32,
 };
-
-const min_radius = 5;
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
@@ -50,7 +50,7 @@ fn vert_node(
   let tile = tiles[index];
 
   var vsOut: VSOutput;
-  let r = min_radius + z[idx - 1];
+  let r = (params.min_radius + z[idx - 1]) / params.scale_radius;
   let c = nodes[idx - 1] + vec2f(params.offset_x, params.offset_y);
   vsOut.vertex = grid_space_to_ndc(v * r + c);
   vsOut.center = grid_space_to_clip_space(c);
@@ -58,6 +58,8 @@ fn vert_node(
   vsOut.tile = tile;
   return vsOut;
 }
+
+const edgeWidth = 2.0;
 
 @fragment
 fn frag_node(
@@ -72,10 +74,7 @@ fn frag_node(
 
   let offset = vec2f(f32(tile % row_count), f32(tile / row_count));
   let s = textureSample(ourTexture, ourSampler, (offset + p) * avatar_dimensions / texture_dimensions);
-  
-  if (distance(pixel.xy, center) < radius) {
-    return s;
-  } else {
-    return vec4f(1, 1, 1, 0);
-  }
+  let dist = distance(pixel.xy, center);
+  let alpha = 1.0 - smoothstep(radius - edgeWidth, radius, dist);
+  return vec4f(s.rgb, s.a * alpha);
 }

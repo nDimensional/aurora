@@ -1,8 +1,16 @@
 import renderShader from "../shaders/render.wgsl?raw";
 import avatarShader from "../shaders/avatar.wgsl?raw";
 
-import { cache } from "./Cache.js";
-import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS, assert } from "./utils.js";
+import { Cache } from "./Cache.js";
+import {
+	AVATAR_DIMENSIONS,
+	COL_COUNT,
+	ROW_COUNT,
+	TEXTURE_DIMENSIONS,
+	assert,
+	getScaleRadius,
+	minRadius,
+} from "./utils.js";
 import { Store } from "./Store.js";
 
 const params = new Float32Array([
@@ -11,6 +19,8 @@ const params = new Float32Array([
 	0, // offset_x
 	0, // offset_y
 	1, // scale
+	minRadius, // min_radius
+	1, // scale_radius
 ]);
 
 export class Renderer {
@@ -28,10 +38,6 @@ export class Renderer {
 		const context = canvas.getContext("webgpu");
 		assert(context !== null);
 
-		// const devicePixelRatio = window.devicePixelRatio;
-		// canvas.width = canvas.clientWidth * devicePixelRatio;
-		// canvas.height = canvas.clientHeight * devicePixelRatio;
-
 		const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
 		context.configure({
 			device,
@@ -39,7 +45,8 @@ export class Renderer {
 			alphaMode: "premultiplied",
 		});
 
-		return new Renderer(context, device, presentationFormat, nodeCount, nodes);
+		const cache = await Cache.create();
+		return new Renderer(cache, context, device, presentationFormat, nodeCount, nodes);
 	}
 
 	private static squareIndexBufferData = new Uint16Array([0, 1, 2, 2, 0, 3]);
@@ -62,6 +69,8 @@ export class Renderer {
 	avatarCount: number = 0;
 
 	constructor(
+		readonly cache: Cache,
+		// readonly canvas: HTMLCanvasElement,
 		readonly context: GPUCanvasContext,
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
@@ -226,6 +235,7 @@ export class Renderer {
 		});
 
 		this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+		this.sampler = device.createSampler({});
 
 		const avatarBindGroupLayout = device.createBindGroupLayout({
 			label: "avatarBindGroupLayout",
@@ -290,22 +300,14 @@ export class Renderer {
 			},
 		});
 
-		console.log("Initialized Renderer");
-
 		const defaultImage = cache.get(0)!;
-		this.device.queue.copyExternalImageToTexture(
-			{ source: defaultImage },
-			{ texture: this.texture, origin: [0, 0] },
-			{ width: defaultImage.width, height: defaultImage.height }
-		);
+		this.copyTile(0, defaultImage);
+
+		console.log("Initialized Renderer");
 	}
 
 	private areaCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaCache = new Uint32Array(this.areaCacheBuffer);
-	private areaCacheLength = 0;
-
-	/** tile-to-idx */
-	private tileOccupancy = new Uint32Array(ROW_COUNT * COL_COUNT);
+	private area = new Uint32Array(this.areaCacheBuffer);
 
 	/** avatar-to-tile */
 	private tiles = new Uint32Array(ROW_COUNT * COL_COUNT);
@@ -313,9 +315,94 @@ export class Renderer {
 	/** idx-to-tile */
 	private tileMap = new Map<number, number>([[0, 0]]);
 
-	private recycling: number[] = Array.from({ length: ROW_COUNT * COL_COUNT }, (_, index) => index);
+	/** tiles */
+	private recycling = new Set<number>(Array.from({ length: ROW_COUNT * COL_COUNT - 1 }, (_, index) => index + 1));
+	private recycle(): number {
+		for (const tile of this.recycling) {
+			return tile;
+		}
+
+		throw new Error("texture atlas overflow");
+	}
+
+	public setAvatars(area: Uint32Array, refresh?: () => void) {
+		let i = 0;
+		let j = 0;
+		while (i < this.avatarCount && j < area.length) {
+			if (this.area[i] < area[j]) {
+				this.removeAvatar(this.area[i]);
+				i++;
+			} else if (this.area[i] > area[j]) {
+				this.addAvatar(area[j], refresh);
+				j++;
+			} else {
+				i++;
+				j++;
+			}
+		}
+
+		while (i < this.avatarCount) {
+			this.removeAvatar(this.area[i]);
+			i++;
+		}
+
+		while (j < area.length) {
+			this.addAvatar(area[j], refresh);
+			j++;
+		}
+
+		for (const [avatar, idx] of area.entries()) {
+			this.tiles[avatar] = this.tileMap.get(idx)!;
+		}
+
+		this.area.set(area);
+		this.avatarCount = area.length;
+		this.device.queue.writeBuffer(this.avatarBuffer, 0, area);
+		this.device.queue.writeBuffer(this.tileBuffer, 0, this.tiles);
+	}
+
+	private addAvatar(idx: number, refresh?: () => void) {
+		const oldTile = this.tileMap.get(idx);
+		if (oldTile !== undefined) {
+			this.recycling.delete(oldTile);
+			this.tileMap.set(idx, oldTile);
+			return;
+		}
+
+		const image = this.cache.get(idx);
+		if (image !== undefined) {
+			const tile = this.recycle();
+			this.recycling.delete(tile);
+			this.tileMap.set(idx, tile);
+			this.copyTile(tile, image);
+			return;
+		}
+
+		// Fetch the image
+		this.tileMap.set(idx, 0);
+		this.cache.fetch(idx).then((image) => {
+			if (this.tileMap.get(idx) === 0) {
+				const tile = this.recycle();
+				this.recycling.delete(tile);
+				this.tileMap.set(idx, tile);
+				this.copyTile(tile, image);
+				refresh?.();
+			}
+		});
+	}
+
+	private removeAvatar(idx: number) {
+		const tile = this.tileMap.get(idx);
+		if (tile !== undefined && tile !== 0) {
+			this.recycling.add(tile);
+		}
+	}
 
 	private copyTile(tile: number, image: ImageBitmap) {
+		if (tile === 0) {
+			console.trace("copying to tile zero");
+		}
+
 		const x = tile % ROW_COUNT;
 		const y = Math.floor(tile / ROW_COUNT);
 
@@ -324,92 +411,6 @@ export class Renderer {
 			{ texture: this.texture, origin: [x * AVATAR_DIMENSIONS.width, y * AVATAR_DIMENSIONS.height] },
 			{ width: image.width, height: image.height }
 		);
-	}
-
-	private addAvatar(idx: number) {
-		const oldTile = this.tileMap.get(idx);
-		if (oldTile !== undefined) {
-			this.tileMap.set(idx, oldTile);
-			return;
-		}
-
-		const image = cache.get(idx);
-		if (image !== undefined) {
-			const tile = this.recycling.pop();
-			if (tile === undefined) {
-				throw new Error("texture atlas overflow");
-			}
-
-			this.copyTile(tile, image);
-			this.tileMap.set(idx, tile);
-			return;
-		}
-
-		// Fetch the image
-		cache.fetch(idx).then((image) => {
-			if (this.tileMap.get(idx) === 0) {
-				const tile = this.recycling.pop();
-				if (tile === undefined) {
-					throw new Error("texture atlas overflow");
-				}
-
-				this.copyTile(tile, image);
-				this.tileMap.set(idx, tile);
-			}
-		});
-
-		this.tileMap.set(idx, 0);
-	}
-
-	private removeAvatar(idx: number) {
-		if (!this.recycling.includes(idx)) {
-			this.recycling.push(idx);
-		}
-	}
-
-	public setAvatars(area: Uint32Array) {
-		let i = 0;
-		let j = 0;
-		while (i < this.areaCacheLength && j < area.length) {
-			if (this.areaCache[i] < area[j]) {
-				this.removeAvatar(this.areaCache[i]);
-				i++;
-			} else if (this.areaCache[i] > area[j]) {
-				this.addAvatar(area[j]);
-				j++;
-			} else {
-				i++;
-				j++;
-			}
-		}
-
-		while (i < this.areaCacheLength) {
-			this.removeAvatar(this.areaCache[i]);
-			i++;
-		}
-
-		while (j < area.length) {
-			this.addAvatar(area[j]);
-			j++;
-		}
-
-		this.areaCache.set(area);
-		this.areaCacheLength = area.length;
-
-		for (const [avatar, idx] of area.entries()) {
-			this.tiles[avatar] = this.tileMap.get(idx)!;
-		}
-
-		// for (let i = 0; i < area.length; i++) {
-		// 	const idx = area[i];
-		// 	this.tiles[i] = i;
-		// 	const image = cache.get(idx) ?? cache.get(0)!;
-		// 	this.copyTile(i, image);
-		// }
-
-		this.avatarCount = area.length;
-		this.device.queue.writeBuffer(this.avatarBuffer, 0, area);
-		this.device.queue.writeBuffer(this.tileBuffer, 0, this.tiles);
 	}
 
 	public setSize(width: number, height: number) {
@@ -424,32 +425,41 @@ export class Renderer {
 
 	public setScale(scale: number) {
 		params[4] = scale;
+		params[6] = getScaleRadius(scale);
 	}
 
 	public render() {
 		this.device.queue.writeBuffer(this.paramBuffer, 0, params);
+
 		const commandEncoder = this.device.createCommandEncoder();
 		const textureView = this.context.getCurrentTexture().createView();
-
 		const passEncoder = commandEncoder.beginRenderPass({
 			colorAttachments: [
 				{
 					view: textureView,
-					// clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-					clearValue: { r: 0.4, g: 0.4, b: 0.4, a: 1.0 },
+					clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1.0 },
 					loadOp: "clear",
 					storeOp: "store",
 				},
 			],
 		});
 
-		// console.log("drawing", this.nodeCount, "nodes");
+		this.renderNodes(passEncoder);
+		this.renderAvatars(passEncoder);
+		passEncoder.end();
+
+		this.device.queue.submit([commandEncoder.finish()]);
+	}
+
+	private renderNodes(passEncoder: GPURenderPassEncoder) {
 		passEncoder.setPipeline(this.nodePipeline);
 		passEncoder.setBindGroup(0, this.nodeBindGroup);
 		passEncoder.setVertexBuffer(0, this.vertexBuffer);
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
 		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.nodeCount);
+	}
 
+	private renderAvatars(passEncoder: GPURenderPassEncoder) {
 		if (this.avatarCount > 0) {
 			passEncoder.setPipeline(this.avatarPipeline);
 			passEncoder.setBindGroup(0, this.nodeBindGroup);
@@ -458,9 +468,5 @@ export class Renderer {
 			passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
 			passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.avatarCount);
 		}
-
-		passEncoder.end();
-
-		this.device.queue.submit([commandEncoder.finish()]);
 	}
 }

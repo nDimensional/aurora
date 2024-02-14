@@ -11,14 +11,28 @@ export const COL_COUNT = Math.floor(TEXTURE_DIMENSIONS.height / AVATAR_DIMENSION
 
 export const map = (a: number, b: number, c: number, d: number, x: number) => ((d - c) * (x - a)) / (b - a) + c;
 
-// const minRadius = 1;
-const minRadius = 5;
+export const MIN_ZOOM = 0;
+export const MAX_ZOOM = 4800;
+
+export function getScale(zoom: number) {
+	return 256 / ((Math.pow(zoom + 1, 2) - 1) / 256 + 256);
+}
+
+export const minRadius = 20;
 
 export function getMinZ(scale: number) {
-	const mass = map(3, 50, 0, 80, minRadius / scale);
-	if (mass < 0) {
+	if (scale > 1) {
 		return 0;
-	} else {
-		return Math.pow(mass, 2);
 	}
+
+	const mass = minRadius / Math.sqrt(scale) - minRadius;
+	return Math.pow(mass / 2, 2);
+}
+
+export function getRadius(z: number, scale: number) {
+	return scale * ((minRadius + z) / getScaleRadius(scale));
+}
+
+export function getScaleRadius(scale: number) {
+	return Math.pow(scale, 1 / 3.5);
 }

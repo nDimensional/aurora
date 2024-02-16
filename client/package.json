@@ -1,9 +1,11 @@
 {
 	"private": true,
-	"name": "@ndimensional/aurora",
+	"name": "@ndimensional/aurora-client",
 	"version": "0.0.0",
 	"type": "module",
 	"scripts": {
+		"dev": "npx vite",
+		"build": "npx vite build",
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
 	"repository": {
@@ -17,10 +19,15 @@
 	},
 	"homepage": "https://github.com/nDimensional/aurora#readme",
 	"devDependencies": {
-		"typescript": "^5.3.3"
+		"vite": "^5.0.12"
 	},
-	"workspaces": [
-		"client",
-		"server"
-	]
+	"dependencies": {
+		"@sqlite.org/sqlite-wasm": "^3.45.1-build1",
+		"@types/react": "^18.2.48",
+		"@types/react-dom": "^18.2.18",
+		"@webgpu/types": "^0.1.40",
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0",
+		"use-debounce": "^10.0.0"
+	}
 }

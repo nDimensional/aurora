@@ -23,21 +23,20 @@ export class Cache {
 		return this.images.has(idx);
 	}
 
-	private loading = new Map<number, Promise<void>>();
-
-	public load(idx: number): Promise<void> | undefined {
-		if (this.images.has(idx)) {
-			return;
-		} else if (this.loading.has(idx)) {
-			return this.loading.get(idx);
-		}
-
-		const promise = this.fetch(idx).finally(() => this.loading.delete(idx));
-		this.loading.set(idx, promise.then());
-		return promise.then();
-	}
+	private loading = new Map<number, Promise<ImageBitmap>>();
 
 	public async fetch(idx: number): Promise<ImageBitmap> {
+		if (this.loading.has(idx)) {
+			return this.loading.get(idx)!;
+		} else {
+			const p = this.#fetch(idx);
+			this.loading.set(idx, p);
+			p.finally(() => void this.loading.delete(idx));
+			return p;
+		}
+	}
+
+	async #fetch(idx: number): Promise<ImageBitmap> {
 		const key = idx.toString(16).padStart(8, "0");
 		const res = await fetch(`${Store.hostURL}/${Store.snapshot}/${key}/avatar`, {});
 		if (res.ok) {

@@ -7,6 +7,21 @@ export class Store {
 	// public static snapshot = "2024-02-08";
 	public static snapshot = "2024-02-09";
 
+	public static async search(q: string) {
+		const res = await fetch(`http://localhost:8000/2024-02-09/profile?q=${encodeURIComponent(q)}`);
+
+		if (res.ok) {
+			const { idx }: { idx: number } = await res.json();
+			return idx;
+		} else if (res.status === 404) {
+			alert("profile not found");
+			return null;
+		} else {
+			alert(`failed to locate profile (${res.status} ${res.statusText})`);
+			return null;
+		}
+	}
+
 	public static async create(): Promise<Store> {
 		const sqlite3 = await initModule();
 
@@ -82,6 +97,7 @@ export class Store {
 	public maxZ: number;
 
 	private select: PreparedStatement;
+	private selectNode: PreparedStatement;
 	private selectArea: PreparedStatement;
 	private queryArea: PreparedStatement;
 
@@ -105,6 +121,7 @@ export class Store {
 		}
 
 		this.select = db.prepare("SELECT idx, minX, minY, minZ FROM atlas LIMIT $limit");
+		this.selectNode = db.prepare("SELECT minX, minY, minZ FROM atlas WHERE idx = $idx");
 		this.selectArea = db.prepare(
 			`SELECT idx FROM atlas WHERE (
 				($minX <= minX AND maxX <= $maxX) AND
@@ -121,9 +138,23 @@ export class Store {
 
 	public close() {
 		this.select.finalize();
+		this.selectNode.finalize();
 		this.selectArea.finalize();
 		this.queryArea.finalize();
 		this.db.close();
+	}
+
+	public get(idx: number): { x: number; y: number; z: number } {
+		try {
+			this.selectNode.bind({ $idx: idx });
+			assert(this.selectNode.step(), "node not found");
+			const x = this.selectNode.getInt(0)!;
+			const y = this.selectNode.getInt(1)!;
+			const z = this.selectNode.getInt(2)!;
+			return { x, y, z };
+		} finally {
+			this.selectNode.reset();
+		}
 	}
 
 	public *nodes(): Iterable<{ idx: number; x: number; y: number; z: number }> {

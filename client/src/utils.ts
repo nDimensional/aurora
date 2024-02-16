@@ -30,7 +30,7 @@ export function getMinZ(scale: number) {
 }
 
 export function getRadius(z: number, scale: number) {
-	return scale * ((minRadius + z) / getScaleRadius(scale));
+	return (minRadius + z) / getScaleRadius(scale);
 }
 
 export function getScaleRadius(scale: number) {

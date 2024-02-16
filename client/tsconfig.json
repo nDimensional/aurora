@@ -1,0 +1,13 @@
+{
+	"include": ["src"],
+	"compilerOptions": {
+		"strict": true,
+		"noEmit": true,
+		"target": "ES2022",
+		"esModuleInterop": true,
+		"jsx": "react",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"types": ["vite/client", "@webgpu/types"]
+	}
+}

@@ -399,10 +399,6 @@ export class Renderer {
 	}
 
 	private copyTile(tile: number, image: ImageBitmap) {
-		if (tile === 0) {
-			console.trace("copying to tile zero");
-		}
-
 		const x = tile % ROW_COUNT;
 		const y = Math.floor(tile / ROW_COUNT);
 

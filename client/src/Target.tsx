@@ -50,7 +50,9 @@ export const Target: React.FC<{ idx: number }> = ({ idx }) => {
 					{followersCount} followers, {followsCount} following
 				</div>
 				<div>
-					<a href={`https://bsky.app/profile/${did}`}>open profile ➡</a>
+					<a href={`https://bsky.app/profile/${did}`} target="_blank">
+						open profile ➡
+					</a>
 				</div>
 			</div>
 		);

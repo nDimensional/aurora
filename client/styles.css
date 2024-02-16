@@ -85,3 +85,43 @@ ul li {
 	align-items: center;
 	justify-content: center;
 }
+
+#search {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	height: 24px;
+
+	background-color: #1f3030;
+	border: 1px solid antiquewhite;
+	border-radius: 12px;
+
+	display: flex;
+	align-items: center;
+
+	opacity: 0.5;
+}
+
+#search:hover {
+	opacity: 1;
+}
+
+#search input {
+	margin-top: 1px;
+	font-family: "Courier Prime", monospace;
+	font-weight: 400;
+	font-style: normal;
+	margin-left: 12px;
+
+	color: antiquewhite;
+	border: none;
+	background-color: inherit;
+}
+
+#search input:focus {
+	outline: none;
+}
+
+#search img {
+	margin: 0 6px;
+}

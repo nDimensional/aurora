@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./Renderer.js";
 import { Store } from "./Store.js";
 import { assert, MIN_ZOOM, MAX_ZOOM, getScale, getMinZ } from "./utils.js";
 import { Target } from "./Target.js";
+import { Search } from "./Search.js";
 
 const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
@@ -31,7 +32,17 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const [isDragging, setIsDragging] = useState(false);
 	const isDraggingRef = useRef<null | number>(null);
 
-	const [target, setTarget] = useState<{ idx: number; clientX: number; clientY: number } | null>(null);
+	const [target, setTarget] = useState<{ idx: number; x: number; y: number } | null>(null);
+	const targetOffset = useMemo(() => {
+		if (target === null) {
+			return null;
+		} else {
+			const scale = getScale(zoomRef.current);
+			const clientX = ((target.x + offsetXRef.current) * scale) / devicePixelRatio + widthRef.current / 2;
+			const clientY = heightRef.current / 2 - ((target.y + offsetYRef.current) * scale) / devicePixelRatio;
+			return { clientX, clientY };
+		}
+	}, [target]);
 
 	const refresh = useDebouncedCallback(
 		() => {
@@ -160,16 +171,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			const scale = getScale(zoomRef.current);
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
-
-			const target = storeRef.current.query(x, y, scale);
-			if (target === null) {
-				setTarget(null);
-			} else {
-				console.log(target);
-				const clientX = ((target.x + offsetXRef.current) * scale) / devicePixelRatio + widthRef.current / 2;
-				const clientY = heightRef.current / 2 - ((target.y + offsetYRef.current) * scale) / devicePixelRatio;
-				setTarget({ idx: target.idx, clientX, clientY });
-			}
+			setTarget(storeRef.current.query(x, y, scale));
 		}
 
 		isDraggingRef.current = null;
@@ -200,6 +202,21 @@ export const Canvas: React.FC<{}> = ({}) => {
 		}
 	}, []);
 
+	const handleLocate = useCallback((idx: number) => {
+		if (storeRef.current === null || rendererRef.current == null) {
+			return;
+		}
+
+		const { x, y } = storeRef.current.get(idx);
+		offsetXRef.current = -x;
+		offsetYRef.current = -y;
+		rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
+		zoomRef.current = 0;
+		rendererRef.current.setScale(getScale(zoomRef.current));
+		refresh();
+		setTarget({ idx, x, y });
+	}, []);
+
 	if (error !== null) {
 		return (
 			<pre id="error">
@@ -210,10 +227,11 @@ export const Canvas: React.FC<{}> = ({}) => {
 
 	return (
 		<>
+			<Search onLocate={handleLocate} />
 			<div id="container" ref={containerRef}>
 				{status && <div id="status">{status}</div>}
-				{target && (
-					<div id="target" style={{ left: target.clientX, top: target.clientY }}>
+				{target && targetOffset && (
+					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY }}>
 						<Target idx={target.idx} />
 					</div>
 				)}

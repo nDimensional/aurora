@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 import { Canvas } from "./Canvas.js";
 import { Landing } from "./Landing.js";
+import { Search } from "./Search.js";
 
 export const App: React.FC<{}> = ({}) => {
 	const [hash, setHash] = useState(window.location.hash.slice(1));

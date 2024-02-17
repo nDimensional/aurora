@@ -52,9 +52,7 @@ export const Search: React.FC<SearchProps> = (props) => {
 				const { value } = inputRef.current;
 				const q = value.startsWith("@") ? value.slice(1) : value;
 				Store.search(q).then((idx) => {
-					if (idx === null) {
-						alert("profile not found");
-					} else {
+					if (idx !== null) {
 						props.onLocate(idx);
 					}
 				});

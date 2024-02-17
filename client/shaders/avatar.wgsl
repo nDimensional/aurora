@@ -12,9 +12,9 @@ struct Params {
 @group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
 @group(0) @binding(2) var<storage, read> z: array<f32>;
 
-const avatar_dimensions = vec2f(256, 256);
+const avatar_dimensions = vec2f(128, 128);
 const texture_dimensions = vec2f(8192, 8192);
-const row_count = 32;
+const row_count = 64;
 
 @group(1) @binding(0) var ourSampler: sampler;
 @group(1) @binding(1) var ourTexture: texture_2d<f32>;

@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+
 import searchImageURL from "../search.svg?url";
+
 import { Store } from "./Store.js";
 
 export interface SearchProps {
@@ -47,8 +49,9 @@ export const Search: React.FC<SearchProps> = (props) => {
 			}
 
 			if (event.key === "Enter") {
-				console.log("SUBMIT", event);
-				Store.search(inputRef.current.value).then((idx) => {
+				const { value } = inputRef.current;
+				const q = value.startsWith("@") ? value.slice(1) : value;
+				Store.search(q).then((idx) => {
 					if (idx === null) {
 						alert("profile not found");
 					} else {

@@ -5,16 +5,16 @@ import http from "node:http";
 import express from "express";
 import Database from "better-sqlite3";
 import { StatusCodes } from "http-status-codes";
+import stoppable from "stoppable";
 
 const { HOST, PORT, DATABASE, SNAPSHOT } = process.env;
 const path = DATABASE ?? "nodes.sqlite";
 const host = HOST ?? "https://cdn.ndimensional.xyz";
-const snapshot = SNAPSHOT ?? "2024-02-09";
 
 if (fs.existsSync(path)) {
 	console.log("database exists");
 } else {
-	const url = `${host}/${snapshot}/nodes.sqlite.gz`;
+	const url = `${host}/${SNAPSHOT}/nodes.sqlite.gz`;
 	console.log("downloading database from", url);
 
 	const res = await fetch(url);
@@ -38,6 +38,8 @@ const selectHandle = db.prepare("SELECT idx FROM nodes WHERE handle = :handle");
 
 const app = express();
 app.use(express.json());
+
+app.get("/", (req, res) => res.status(StatusCodes.OK).end());
 
 app.get("/:snapshot/profile", (req, res) => {
 	res.setHeader("Access-Control-Allow-Origin", "*");
@@ -72,4 +74,4 @@ app.get("/:snapshot/profile", (req, res) => {
 });
 
 const port = parseInt(PORT ?? "8000");
-http.createServer(app).listen(port, () => console.log(`listening on http://localhost:${port}`));
+stoppable(http.createServer(app)).listen(port, () => console.log(`listening on http://localhost:${port}`));

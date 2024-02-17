@@ -207,7 +207,8 @@ export const Canvas: React.FC<{}> = ({}) => {
 			return;
 		}
 
-		const { x, y } = storeRef.current.get(idx);
+		const { x, y, z } = storeRef.current.get(idx);
+		console.log({ x, y, z });
 		offsetXRef.current = -x;
 		offsetYRef.current = -y;
 		rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);

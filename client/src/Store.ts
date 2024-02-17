@@ -4,11 +4,12 @@ import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export class Store {
 	public static hostURL = "https://cdn.ndimensional.xyz";
-	// public static snapshot = "2024-02-08";
 	public static snapshot = "2024-02-09";
 
+	public static apiURL = "https://aurora-server-spring-hill-5575.fly.dev";
+
 	public static async search(q: string) {
-		const res = await fetch(`http://localhost:8000/2024-02-09/profile?q=${encodeURIComponent(q)}`);
+		const res = await fetch(`${Store.apiURL}/${Store.snapshot}/profile?q=${encodeURIComponent(q)}`);
 
 		if (res.ok) {
 			const { idx }: { idx: number } = await res.json();
@@ -60,32 +61,32 @@ export class Store {
 	}
 
 	private static async getSnapshot(): Promise<FileSystemFileHandle> {
+		const path = `${Store.snapshot}/graph.sqlite`;
+
 		const rootDirectory = await navigator.storage.getDirectory();
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
-			const snapshotFile = await snapshotDirectory.getFileHandle("atlas.sqlite", { create: false });
-			console.log("found existing file in storage...");
+			const snapshotFile = await snapshotDirectory.getFileHandle("graph.sqlite", { create: false });
+			console.log(`found existing database at ${path}`);
 			return snapshotFile;
 		} catch (err) {
-			console.log({ err });
 			if (err instanceof DOMException && err.name === "NotFoundError") {
-				console.log("creating file handle...");
-				const snapshotFile = await snapshotDirectory.getFileHandle("atlas.sqlite", { create: true });
+				const snapshotFile = await snapshotDirectory.getFileHandle("graph.sqlite", { create: true });
 				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
-				const res = await fetch(`${Store.hostURL}/${Store.snapshot}/atlas.sqlite.gz`);
-				assert(res.ok && res.body !== null);
 
-				console.log("streaming response to file...");
-				if (res.headers.get("Content-Encoding") === "gzip") {
-					await res.body.pipeTo(writeStream);
-				} else if (res.headers.get("Content-Type") === "application/x-gzip") {
+				const graphURL = `${Store.hostURL}/${Store.snapshot}/graph.sqlite.gz`;
+				console.log(`fetching ${graphURL}`);
+
+				const res = await fetch(graphURL);
+				assert(res.ok && res.body !== null);
+				if (res.headers.get("Content-Type") === "application/x-gzip") {
 					const decompress = new DecompressionStream("gzip");
 					await res.body.pipeThrough(decompress).pipeTo(writeStream);
 				} else {
-					throw new Error("unrecognized response stream");
+					await res.body.pipeTo(writeStream);
 				}
 
-				console.log("done!");
+				console.log(`wrote database to ${path}`);
 				return snapshotFile;
 			} else {
 				throw err;
@@ -166,7 +167,7 @@ export class Store {
 				const x = this.select.getInt(1)! * scale;
 				const y = this.select.getInt(2)! * scale;
 				const z = this.select.getInt(3)!;
-				yield { idx, x, y, z: Math.sqrt(z) };
+				yield { idx, x, y, z: Math.pow(z, 1 / 2.5) };
 			}
 		} finally {
 			this.select.reset();
@@ -189,7 +190,7 @@ export class Store {
 				const dy = y - nodeY;
 				const dist = Math.sqrt(dx * dx + dy * dy);
 
-				const r = getRadius(Math.sqrt(nodeZ), scale);
+				const r = getRadius(Math.pow(nodeZ, 1 / 2.5), scale);
 
 				if (dist < r) {
 					if (target === null || dist < target.dist) {

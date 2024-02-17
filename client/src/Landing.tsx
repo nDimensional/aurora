@@ -32,9 +32,9 @@ export const Landing: React.FC<{}> = ({}) => {
 						<p>Aurora will:</p>
 						<ul>
 							<li>
-								download and cache a 191 MB SQLite database (you can clear this anytime through your browser settings)
+								download and cache a 194 MB SQLite database (you can clear this anytime through your browser settings)
 							</li>
-							<li>render a graph of 2.4 million nodes, which might be slow and consume lots of power</li>
+							<li>render a graph of 2.3 million nodes, which might be slow and consume lots of power</li>
 						</ul>
 						<hr />
 						<div>

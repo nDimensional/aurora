@@ -92,18 +92,18 @@ ul li {
 	right: 8px;
 	height: 24px;
 
+	display: flex;
+	gap: 8px;
+
+	opacity: 0.5;
+
+	height: 24px;
 	background-color: #1f3030;
 	border: 1px solid antiquewhite;
-	border-radius: 12px;
+	border-radius: 13px;
 
 	display: flex;
 	align-items: center;
-
-	opacity: 0.5;
-}
-
-#search:hover {
-	opacity: 1;
 }
 
 #search input {
@@ -116,6 +116,10 @@ ul li {
 	color: antiquewhite;
 	border: none;
 	background-color: inherit;
+}
+
+#search:hover {
+	opacity: 1;
 }
 
 #search input:focus {

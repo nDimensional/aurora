@@ -55,7 +55,7 @@ app.get("/:snapshot/profile", (req, res) => {
 		return res.status(StatusCodes.BAD_REQUEST).end();
 	}
 
-	const q = decodeURIComponent(req.query.q);
+	const q = decodeURIComponent(req.query.q).toLowerCase();
 	if (q.startsWith("did:plc:") || q.startsWith("did:web:")) {
 		const { idx }: { idx?: number } = selectDID.get({ did: q }) ?? {};
 		if (idx !== undefined) {
@@ -64,7 +64,11 @@ app.get("/:snapshot/profile", (req, res) => {
 			return res.status(StatusCodes.NOT_FOUND).end();
 		}
 	} else {
-		const { idx }: { idx?: number } = selectHandle.get({ handle: q }) ?? {};
+		let handle = q;
+		if (handle.startsWith("@")) handle = handle.slice(1);
+		if (!handle.includes(".")) handle = `${handle}.bsky.social`;
+
+		const { idx }: { idx?: number } = selectHandle.get({ handle }) ?? {};
 		if (idx !== undefined) {
 			return res.json({ idx });
 		} else {
@@ -74,4 +78,6 @@ app.get("/:snapshot/profile", (req, res) => {
 });
 
 const port = parseInt(PORT ?? "8000");
-stoppable(http.createServer(app)).listen(port, () => console.log(`listening on http://localhost:${port}`));
+const server = stoppable(http.createServer(app));
+server.listen(port, () => console.log(`listening on http://localhost:${port}`));
+process.addListener("SIGINT", () => server.stop(() => db.close()));

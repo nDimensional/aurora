@@ -11,6 +11,14 @@ export type Area = {
 	z: Float32Array;
 };
 
+type Profile = {
+	id: number;
+	did: string;
+	handle: string | null;
+	display_name: string | null;
+	description: string | null;
+};
+
 export class Store {
 	public static scaleZ = (z: number) => Math.pow(z, 1 / 2.5);
 
@@ -23,23 +31,6 @@ export class Store {
 
 	// public static apiURL = "https://aurora-server-spring-hill-5575.fly.dev";
 	// public static apiURL = "http://localhost:8000";
-
-	public static async search(q: string): Promise<number | null> {
-		throw new Error("not implemented");
-
-		// const res = await fetch(`${Store.apiURL}/${Store.snapshot}/profile?q=${encodeURIComponent(q)}`);
-
-		// if (res.ok) {
-		// 	const { id }: { id: number } = await res.json();
-		// 	return id;
-		// } else if (res.status === 404) {
-		// 	alert("profile not found");
-		// 	return null;
-		// } else {
-		// 	alert(`failed to locate profile (${res.status} ${res.statusText})`);
-		// 	return null;
-		// }
-	}
 
 	public static async create(): Promise<Store> {
 		const sqlite3 = await initModule();

@@ -3,7 +3,7 @@ import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./Renderer.js";
 import { Store } from "./Store.js";
-import { assert, MIN_ZOOM, MAX_ZOOM, getScale, getMinZ } from "./utils.js";
+import { Profile, assert, getScale, getMinZ, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
 
@@ -202,7 +202,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 		}
 	}, []);
 
-	const handleLocate = useCallback((id: number) => {
+	const handleLocate = useCallback(({ id }: Profile) => {
 		if (storeRef.current === null || rendererRef.current == null) {
 			return;
 		}

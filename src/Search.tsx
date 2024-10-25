@@ -2,10 +2,23 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 
 import searchImageURL from "../search.svg?url";
 
-import { Store } from "./Store.js";
+import { Profile } from "./utils.js";
+
+async function search(q: string): Promise<Profile | null> {
+	const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+	if (res.ok) {
+		return await res.json();
+	} else if (res.status === 404) {
+		alert("profile not found");
+		return null;
+	} else {
+		alert(`profile lookup failed (${res.status} ${res.statusText})`);
+		return null;
+	}
+}
 
 export interface SearchProps {
-	onLocate: (id: number) => void;
+	onLocate: (profile: Profile) => void;
 }
 
 export const Search: React.FC<SearchProps> = (props) => {
@@ -51,9 +64,9 @@ export const Search: React.FC<SearchProps> = (props) => {
 			if (event.key === "Enter") {
 				const { value } = inputRef.current;
 				const q = value.startsWith("@") ? value.slice(1) : value;
-				Store.search(q).then((id) => {
-					if (id !== null) {
-						props.onLocate(id);
+				search(q).then((profile) => {
+					if (profile !== null) {
+						props.onLocate(profile);
 					}
 				});
 			}

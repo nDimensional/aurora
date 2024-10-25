@@ -246,12 +246,10 @@ export class Renderer {
 		this.texture = device.createTexture({
 			label: "texture",
 			format: "rgba8unorm",
-			// mipLevelCount: getMipLevelCount(TEXTURE_DIMENSIONS.width, TEXTURE_DIMENSIONS.height),
 			size: [TEXTURE_DIMENSIONS.width, TEXTURE_DIMENSIONS.height],
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 		});
 
-		// this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 		this.sampler = device.createSampler({});
 
 		const avatarBindGroupLayout = device.createBindGroupLayout({

@@ -1,13 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Store } from "./Store.js";
+
+import { Profile } from "./utils.js";
 
 export const Target: React.FC<{ id: number }> = ({ id }) => {
-	const [profile, setProfile] = useState<{
-		did: string;
-		handle: string;
-		displayName: string | null;
-		description: string | null;
-	} | null>(null);
+	const [profile, setProfile] = useState<Profile | null>(null);
 
 	const [error, setError] = useState<string | null>(null);
 
@@ -15,16 +11,21 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 		const key = id.toString(16).padStart(8, "0");
 		const controller = new AbortController();
 
-		// fetch(`${Store.hostURL}/${Store.snapshot}/${key}/profile`, { signal: controller.signal }).then((res) => {
-		// 	if (res.ok) {
-		// 		res.json().then((profile) => setProfile(profile));
-		// 	} else if (res.status === 404) {
-		// 		res.body?.cancel();
-		// 		setError("profile not found");
-		// 	} else {
-		// 		res.text().then(setError);
-		// 	}
-		// });
+		fetch(`/profile/${key}`, { signal: controller.signal }).then(
+			(res) =>
+				res.json().then(
+					(profile: Profile) => setProfile(profile),
+					(err) => setError(`${err}`),
+				),
+			(err) => {
+				if (err instanceof DOMException && err.name === "AbortError") {
+					console.log("aborted profile request");
+				} else {
+					console.error(err);
+					setError(`${err}`);
+				}
+			},
+		);
 
 		return () => controller.abort();
 	}, [id]);
@@ -34,12 +35,12 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 	} else if (profile === null) {
 		return <code>loading...</code>;
 	} else {
-		const { did, handle, displayName, description } = profile;
+		const { did, handle, display_name, description } = profile;
 		return (
 			<div>
-				{displayName && (
+				{display_name && (
 					<>
-						<div className="display-name">{displayName}</div>
+						<div className="display-name">{display_name}</div>
 						<hr />
 					</>
 				)}

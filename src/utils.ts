@@ -1,3 +1,11 @@
+export type Profile = {
+	id: number;
+	did: string;
+	handle: string | null;
+	display_name: string | null;
+	description: string | null;
+};
+
 export function assert(condition: boolean, message?: string): asserts condition {
 	if (!condition) {
 		throw new Error(message ?? "assert failed");

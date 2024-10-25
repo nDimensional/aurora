@@ -22,7 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 	);
 
 	if (query.q === undefined) {
-		return Response.json({ profile: null });
+		return new Response("Not Found", { status: 404 });
 	}
 
 	let handle = query.q;
@@ -32,10 +32,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 	if (handle.startsWith("did:")) {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE did = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();
-		return Response.json({ profile });
+		if (profile === null) {
+			return new Response("Not Found", { status: 404 });
+		} else {
+			return Response.json(profile);
+		}
 	} else {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE handle = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();
-		return Response.json({ profile });
+		if (profile === null) {
+			return new Response("Not Found", { status: 404 });
+		} else {
+			return Response.json(profile);
+		}
 	}
 };

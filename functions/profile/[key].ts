@@ -10,7 +10,7 @@ type Profile = {
 	description: string | null;
 };
 
-export const onGetRequest: PagesFunction<Env, "key"> = async (context) => {
+export const onRequestGet: PagesFunction<Env, "key"> = async (context) => {
 	const { DB } = context.env;
 
 	const { key } = context.params;

@@ -10,7 +10,7 @@ type Profile = {
 	description: string | null;
 };
 
-export const onGetRequest: PagesFunction<Env> = async (context) => {
+export const onRequestGet: PagesFunction<Env> = async (context) => {
 	const { DB } = context.env;
 
 	const url = new URL(context.request.url);

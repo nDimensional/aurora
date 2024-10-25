@@ -11,19 +11,12 @@ export type Area = {
 	z: Float32Array;
 };
 
-type Profile = {
-	id: number;
-	did: string;
-	handle: string | null;
-	display_name: string | null;
-	description: string | null;
-};
-
 export class Store {
 	public static scaleZ = (z: number) => Math.pow(z, 1 / 2.5);
 
 	public static hostURL = "https://cdn.ndimensional.xyz";
-	public static snapshot = "2024-02-09";
+	public static snapshot = "2024-09-09-1e6";
+	public static databaseKey = "atlas.sqlite.gz";
 
 	// public static hostURL = "";
 	// public static snapshot = "2024-09-09";
@@ -72,39 +65,38 @@ export class Store {
 	}
 
 	private static async getSnapshot(): Promise<FileSystemFileHandle> {
-		throw new Error("not implemented");
-		// const filename = "atlas.sqlite";
-		// const path = `${Store.snapshot}/${filename}`;
+		const filename = "atlas.sqlite";
+		const path = `${Store.snapshot}/${filename}`;
 
-		// const rootDirectory = await navigator.storage.getDirectory();
-		// const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
-		// try {
-		// 	const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
-		// 	console.log(`found existing database at ${path}`);
-		// 	return snapshotFile;
-		// } catch (err) {
-		// 	if (err instanceof DOMException && err.name === "NotFoundError") {
-		// 		const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
-		// 		const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
+		const rootDirectory = await navigator.storage.getDirectory();
+		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
+		try {
+			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
+			console.log(`found existing database at ${path}`);
+			return snapshotFile;
+		} catch (err) {
+			if (err instanceof DOMException && err.name === "NotFoundError") {
+				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
+				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
 
-		// 		const graphURL = `${Store.hostURL}/${Store.snapshot}/atlas.sqlite.gz`;
-		// 		console.log(`fetching ${graphURL}`);
+				const graphURL = `${Store.hostURL}/${Store.databaseKey}`;
+				console.log(`fetching ${graphURL}`);
 
-		// 		const res = await fetch(graphURL);
-		// 		assert(res.ok && res.body !== null);
-		// 		if (res.headers.get("Content-Type") === "application/x-gzip") {
-		// 			const decompress = new DecompressionStream("gzip");
-		// 			await res.body.pipeThrough(decompress).pipeTo(writeStream);
-		// 		} else {
-		// 			await res.body.pipeTo(writeStream);
-		// 		}
+				const res = await fetch(graphURL);
+				assert(res.ok && res.body !== null);
+				if (res.headers.get("Content-Type") === "application/x-gzip") {
+					const decompress = new DecompressionStream("gzip");
+					await res.body.pipeThrough(decompress).pipeTo(writeStream);
+				} else {
+					await res.body.pipeTo(writeStream);
+				}
 
-		// 		console.log(`wrote database to ${path}`);
-		// 		return snapshotFile;
-		// 	} else {
-		// 		throw err;
-		// 	}
-		// }
+				console.log(`wrote database to ${path}`);
+				return snapshotFile;
+			} else {
+				throw err;
+			}
+		}
 	}
 
 	public nodeCount: number;

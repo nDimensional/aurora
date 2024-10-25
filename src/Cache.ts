@@ -28,7 +28,6 @@ export class Cache {
 	private loading = new Map<number, Promise<ImageBitmap>>();
 
 	public async fetch(id: number): Promise<ImageBitmap> {
-		console.log("fetching", id, getKey(id));
 		if (this.loading.has(id)) {
 			return this.loading.get(id)!;
 		} else {

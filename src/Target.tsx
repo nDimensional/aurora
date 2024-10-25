@@ -11,21 +11,24 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 		const key = id.toString(16).padStart(8, "0");
 		const controller = new AbortController();
 
-		fetch(`/profile/${key}`, { signal: controller.signal }).then(
-			(res) =>
-				res.json().then(
-					(profile: Profile) => setProfile(profile),
-					(err) => setError(`${err}`),
-				),
-			(err) => {
+		fetch(`/profile/${key}`, { signal: controller.signal })
+			.then(async (res) => {
+				if (res.ok) {
+					const profile: Profile = await res.json();
+					setProfile(profile);
+				} else {
+					const text = await res.text();
+					setError(`${res.status} ${text}`);
+				}
+			})
+			.catch((err) => {
 				if (err instanceof DOMException && err.name === "AbortError") {
 					console.log("aborted profile request");
 				} else {
 					console.error(err);
 					setError(`${err}`);
 				}
-			},
-		);
+			});
 
 		return () => controller.abort();
 	}, [id]);

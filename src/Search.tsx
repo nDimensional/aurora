@@ -5,7 +5,7 @@ import searchImageURL from "../search.svg?url";
 import { Store } from "./Store.js";
 
 export interface SearchProps {
-	onLocate: (idx: number) => void;
+	onLocate: (id: number) => void;
 }
 
 export const Search: React.FC<SearchProps> = (props) => {
@@ -51,14 +51,14 @@ export const Search: React.FC<SearchProps> = (props) => {
 			if (event.key === "Enter") {
 				const { value } = inputRef.current;
 				const q = value.startsWith("@") ? value.slice(1) : value;
-				Store.search(q).then((idx) => {
-					if (idx !== null) {
-						props.onLocate(idx);
+				Store.search(q).then((id) => {
+					if (id !== null) {
+						props.onLocate(id);
 					}
 				});
 			}
 		},
-		[props.onLocate]
+		[props.onLocate],
 	);
 
 	const [value, setValue] = useState("");

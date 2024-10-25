@@ -19,15 +19,16 @@
 	},
 	"homepage": "https://github.com/nDimensional/aurora#readme",
 	"devDependencies": {
-		"vite": "^5.0.12"
+		"vite": "^5.4.10"
 	},
 	"dependencies": {
+		"@noble/hashes": "^1.5.0",
 		"@sqlite.org/sqlite-wasm": "^3.45.1-build1",
-		"@types/react": "^18.2.48",
-		"@types/react-dom": "^18.2.18",
-		"@webgpu/types": "^0.1.40",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0",
+		"@types/react": "^18.3.12",
+		"@types/react-dom": "^18.3.1",
+		"@webgpu/types": "^0.1.49",
+		"react": "^18.3.1",
+		"react-dom": "^18.3.1",
 		"use-debounce": "^10.0.0"
 	}
 }

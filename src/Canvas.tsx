@@ -32,7 +32,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const [isDragging, setIsDragging] = useState(false);
 	const isDraggingRef = useRef<null | number>(null);
 
-	const [target, setTarget] = useState<{ idx: number; x: number; y: number } | null>(null);
+	const [target, setTarget] = useState<{ id: number; x: number; y: number } | null>(null);
 	const targetOffset = useMemo(() => {
 		if (target === null) {
 			return null;
@@ -65,7 +65,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			rendererRef.current?.setAvatars(area, refresh);
 		},
 		500,
-		{ leading: true, trailing: true, maxWait: 500 }
+		{ leading: true, trailing: true, maxWait: 500 },
 	);
 
 	const init = useCallback(async (canvas: HTMLCanvasElement, width: number, height: number) => {
@@ -202,12 +202,12 @@ export const Canvas: React.FC<{}> = ({}) => {
 		}
 	}, []);
 
-	const handleLocate = useCallback((idx: number) => {
+	const handleLocate = useCallback((id: number) => {
 		if (storeRef.current === null || rendererRef.current == null) {
 			return;
 		}
 
-		const { x, y, z } = storeRef.current.get(idx);
+		const { x, y, z } = storeRef.current.get(id);
 		console.log({ x, y, z });
 		offsetXRef.current = -x;
 		offsetYRef.current = -y;
@@ -215,7 +215,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 		zoomRef.current = 0;
 		rendererRef.current.setScale(getScale(zoomRef.current));
 		refresh();
-		setTarget({ idx, x, y });
+		setTarget({ id, x, y });
 	}, []);
 
 	if (error !== null) {
@@ -233,7 +233,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 				{status && <div id="status">{status}</div>}
 				{target && targetOffset && (
 					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY }}>
-						<Target idx={target.idx} />
+						<Target id={target.id} />
 					</div>
 				)}
 				<canvas

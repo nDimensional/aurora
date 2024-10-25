@@ -11,7 +11,7 @@ import {
 	getScaleRadius,
 	minRadius,
 } from "./utils.js";
-import { Store } from "./Store.js";
+import { Store, Area } from "./Store.js";
 
 const params = new Float32Array([
 	0, // width
@@ -27,7 +27,7 @@ export class Renderer {
 	public static async create(
 		canvas: HTMLCanvasElement,
 		nodeCount: number,
-		nodes: Iterable<{ idx: number; x: number; y: number; z: number }>
+		nodes: Iterable<{ id: number; x: number; y: number; z: number }>,
 	) {
 		const adapter = await navigator.gpu.requestAdapter();
 		assert(adapter !== null);
@@ -56,7 +56,11 @@ export class Renderer {
 	indexBuffer: GPUBuffer;
 	paramBuffer: GPUBuffer;
 
-	avatarBuffer: GPUBuffer;
+	// avatarBuffer: GPUBuffer;
+	avatarXBuffer: GPUBuffer;
+	avatarYBuffer: GPUBuffer;
+	avatarZBuffer: GPUBuffer;
+
 	tileBuffer: GPUBuffer;
 	texture: GPUTexture;
 	sampler: GPUSampler;
@@ -75,7 +79,7 @@ export class Renderer {
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
 		readonly nodeCount: number,
-		nodes: Iterable<{ idx: number; x: number; y: number; z: number }>
+		nodes: Iterable<{ id: number; x: number; y: number; z: number }>,
 	) {
 		// initialize param buffer
 		const paramBufferSize = params.length * 4;
@@ -85,10 +89,22 @@ export class Renderer {
 			size: paramBufferSize,
 		});
 
-		// initialize avatar buffer
+		// initialize avatar buffers
 		const avatarBufferSize = ROW_COUNT * COL_COUNT * 4;
-		this.avatarBuffer = device.createBuffer({
-			label: "avatarBuffer",
+		this.avatarXBuffer = device.createBuffer({
+			label: "avatarXBuffer",
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+			size: avatarBufferSize,
+		});
+
+		this.avatarYBuffer = device.createBuffer({
+			label: "avatarYBuffer",
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+			size: avatarBufferSize,
+		});
+
+		this.avatarZBuffer = device.createBuffer({
+			label: "avatarZBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 			size: avatarBufferSize,
 		});
@@ -124,8 +140,9 @@ export class Renderer {
 
 			const nodeMap = nodeBuffer.getMappedRange(0, nodeBufferSize);
 			const nodeArray = new Float32Array(nodeMap, 0, nodeCount * 2);
-			for (const { idx, x, y, z } of nodes) {
-				const i = idx - 1;
+			let n = 0;
+			for (const { id, x, y, z } of nodes) {
+				const i = n++;
 				nodeArray[2 * i] = x;
 				nodeArray[2 * i + 1] = y;
 				zArray[i] = z;
@@ -234,7 +251,7 @@ export class Renderer {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
 		});
 
-		this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+		// this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
 		this.sampler = device.createSampler({});
 
 		const avatarBindGroupLayout = device.createBindGroupLayout({
@@ -244,6 +261,8 @@ export class Renderer {
 				{ binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
 				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+				{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+				{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -253,8 +272,10 @@ export class Renderer {
 			entries: [
 				{ binding: 0, resource: this.sampler },
 				{ binding: 1, resource: this.texture.createView() },
-				{ binding: 2, resource: { buffer: this.avatarBuffer } },
-				{ binding: 3, resource: { buffer: this.tileBuffer } },
+				{ binding: 2, resource: { buffer: this.avatarXBuffer } },
+				{ binding: 3, resource: { buffer: this.avatarYBuffer } },
+				{ binding: 4, resource: { buffer: this.avatarZBuffer } },
+				{ binding: 5, resource: { buffer: this.tileBuffer } },
 			],
 		});
 
@@ -306,13 +327,21 @@ export class Renderer {
 		console.log("Initialized Renderer");
 	}
 
-	private areaCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private area = new Uint32Array(this.areaCacheBuffer);
+	private areaIdCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
+	private areaXCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
+	private areaYCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
+	private areaZCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
+	private area: Area = {
+		id: new Uint32Array(this.areaIdCacheBuffer),
+		x: new Float32Array(this.areaXCacheBuffer),
+		y: new Float32Array(this.areaYCacheBuffer),
+		z: new Float32Array(this.areaZCacheBuffer),
+	};
 
-	/** avatar-to-tile */
+	/** avatar-to-tile (avatar is an index into this array) */
 	private tiles = new Uint32Array(ROW_COUNT * COL_COUNT);
 
-	/** idx-to-tile */
+	/** id-to-tile */
 	private tileMap = new Map<number, number>([[0, 0]]);
 
 	/** tiles */
@@ -325,15 +354,16 @@ export class Renderer {
 		throw new Error("texture atlas overflow");
 	}
 
-	public setAvatars(area: Uint32Array, refresh?: () => void) {
+	/** area is a sorted array of node ids */
+	public setAvatars(area: Area, refresh?: () => void) {
 		let i = 0;
 		let j = 0;
-		while (i < this.avatarCount && j < area.length) {
-			if (this.area[i] < area[j]) {
-				this.removeAvatar(this.area[i]);
+		while (i < this.avatarCount && j < area.id.length) {
+			if (this.area.id[i] < area.id[j]) {
+				this.removeAvatar(this.area.id[i]);
 				i++;
-			} else if (this.area[i] > area[j]) {
-				this.addAvatar(area[j], refresh);
+			} else if (this.area.id[i] > area.id[j]) {
+				this.addAvatar(area.id[j], refresh);
 				j++;
 			} else {
 				i++;
@@ -342,57 +372,61 @@ export class Renderer {
 		}
 
 		while (i < this.avatarCount) {
-			this.removeAvatar(this.area[i]);
+			this.removeAvatar(this.area.id[i]);
 			i++;
 		}
 
-		while (j < area.length) {
-			this.addAvatar(area[j], refresh);
+		while (j < area.id.length) {
+			this.addAvatar(area.id[j], refresh);
 			j++;
 		}
 
-		for (const [avatar, idx] of area.entries()) {
-			this.tiles[avatar] = this.tileMap.get(idx)!;
+		for (const [avatar, id] of area.id.entries()) {
+			this.tiles[avatar] = this.tileMap.get(id)!;
 		}
 
-		this.area.set(area);
-		this.avatarCount = area.length;
-		this.device.queue.writeBuffer(this.avatarBuffer, 0, area);
+		this.area.id.set(area.id);
+		this.avatarCount = area.id.length;
+
+		// this.device.queue.writeBuffer(this.avatarBuffer, 0, area.id);
+		this.device.queue.writeBuffer(this.avatarXBuffer, 0, area.x);
+		this.device.queue.writeBuffer(this.avatarYBuffer, 0, area.y);
+		this.device.queue.writeBuffer(this.avatarZBuffer, 0, area.z);
 		this.device.queue.writeBuffer(this.tileBuffer, 0, this.tiles);
 	}
 
-	private addAvatar(idx: number, refresh?: () => void) {
-		const oldTile = this.tileMap.get(idx);
+	private addAvatar(id: number, refresh?: () => void) {
+		const oldTile = this.tileMap.get(id);
 		if (oldTile !== undefined) {
 			this.recycling.delete(oldTile);
-			this.tileMap.set(idx, oldTile);
+			this.tileMap.set(id, oldTile);
 			return;
 		}
 
-		const image = this.cache.get(idx);
+		const image = this.cache.get(id);
 		if (image !== undefined) {
 			const tile = this.recycle();
 			this.recycling.delete(tile);
-			this.tileMap.set(idx, tile);
+			this.tileMap.set(id, tile);
 			this.copyTile(tile, image);
 			return;
 		}
 
 		// Fetch the image
-		this.tileMap.set(idx, 0);
-		this.cache.fetch(idx).then((image) => {
-			if (this.tileMap.get(idx) === 0) {
+		this.tileMap.set(id, 0);
+		this.cache.fetch(id).then((image) => {
+			if (this.tileMap.get(id) === 0) {
 				const tile = this.recycle();
 				this.recycling.delete(tile);
-				this.tileMap.set(idx, tile);
+				this.tileMap.set(id, tile);
 				this.copyTile(tile, image);
 				refresh?.();
 			}
 		});
 	}
 
-	private removeAvatar(idx: number) {
-		const tile = this.tileMap.get(idx);
+	private removeAvatar(id: number) {
+		const tile = this.tileMap.get(id);
 		if (tile !== undefined && tile !== 0) {
 			this.recycling.add(tile);
 		}
@@ -405,7 +439,7 @@ export class Renderer {
 		this.device.queue.copyExternalImageToTexture(
 			{ source: image },
 			{ texture: this.texture, origin: [x * AVATAR_DIMENSIONS.width, y * AVATAR_DIMENSIONS.height] },
-			{ width: image.width, height: image.height }
+			{ width: image.width, height: image.height },
 		);
 	}
 

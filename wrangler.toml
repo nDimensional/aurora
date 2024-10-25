@@ -1,0 +1,4 @@
+[[d1_databases]]
+binding = "DB"
+database_name = "aurora-profiles"
+database_id = "9df2c005-3439-4359-8b5f-134188805986"

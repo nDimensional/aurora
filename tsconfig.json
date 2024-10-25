@@ -1,13 +1,14 @@
 {
 	"include": ["src"],
+	"exclude": ["functions/**/*"],
 	"compilerOptions": {
 		"strict": true,
 		"noEmit": true,
 		"target": "ES2022",
 		"esModuleInterop": true,
 		"jsx": "react",
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
+		"module": "ES2022",
+		"moduleResolution": "Bundler",
 		"types": ["vite/client", "@webgpu/types"]
 	}
 }

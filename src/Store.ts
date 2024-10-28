@@ -1,6 +1,6 @@
 import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
-import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
+import { COL_COUNT, ROW_COUNT, assert, getRadius, scaleZ, scaleZInv } from "./utils.js";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex } from "@noble/hashes/utils";
 
@@ -11,12 +11,18 @@ export type Area = {
 	z: Float32Array;
 };
 
-export class Store {
-	public static scaleZ = (z: number) => Math.pow(z, 1 / 2.5);
+export const emptyArea: Area = {
+	id: new Uint32Array([]),
+	x: new Float32Array([]),
+	y: new Float32Array([]),
+	z: new Float32Array([]),
+};
 
+export class Store {
 	public static hostURL = "https://cdn.ndimensional.xyz";
 	public static snapshot = "2024-09-09-1e6";
-	public static databaseKey = "atlas.sqlite.gz";
+	// public static databaseKey = "atlas.sqlite.gz";
+	public static databaseKey = "atlas-2024-09-09-1e6.sqlite.gz";
 
 	// public static hostURL = "";
 	// public static snapshot = "2024-09-09";
@@ -126,7 +132,7 @@ export class Store {
 			this.maxZ = selectMaxZ.getInt(0) ?? 0;
 			selectMaxZ.finalize();
 
-			console.log("maxZ:", this.maxZ);
+			console.log("maxZ:", this.maxZ, scaleZ(this.maxZ));
 		}
 
 		this.select = db.prepare("SELECT id, minX, minY, minZ FROM users LIMIT $limit");
@@ -160,22 +166,21 @@ export class Store {
 			const x = this.selectNode.getInt(0)!;
 			const y = this.selectNode.getInt(1)!;
 			const z = this.selectNode.getInt(2)!;
-			return { x, y, z };
+			return { x, y, z: scaleZ(z) };
 		} finally {
 			this.selectNode.reset();
 		}
 	}
 
 	public *nodes(): Generator<{ id: number; x: number; y: number; z: number }> {
-		const scale = 1;
 		try {
 			this.select.bind({ $limit: this.nodeCount });
 			while (this.select.step()) {
 				const id = this.select.getInt(0)!;
-				const x = this.select.getInt(1)! * scale;
-				const y = this.select.getInt(2)! * scale;
+				const x = this.select.getInt(1)!;
+				const y = this.select.getInt(2)!;
 				const z = this.select.getInt(3)!;
-				yield { id, x, y, z: Store.scaleZ(z) };
+				yield { id, x, y, z: scaleZ(z) };
 			}
 		} finally {
 			this.select.reset();
@@ -183,10 +188,12 @@ export class Store {
 	}
 
 	public query(x: number, y: number, scale: number): { id: number; x: number; y: number } | null {
-		const maxR = getRadius(Math.sqrt(this.maxZ), scale);
+		console.log("query", x, y, scale);
+		console.log(this.maxZ, scaleZ(this.maxZ), getRadius(scaleZ(this.maxZ), scale, scaleZ(this.maxZ)));
+		const maxR = getRadius(scaleZ(this.maxZ), scale, scaleZ(this.maxZ));
 
 		let target: { id: number; x: number; y: number; dist: number } | null = null;
-
+		console.log("querying", { $x: x, $y: y, $r: maxR });
 		this.queryArea.bind({ $x: x, $y: y, $r: maxR });
 		try {
 			while (this.queryArea.step()) {
@@ -198,7 +205,7 @@ export class Store {
 				const dy = y - nodeY;
 				const dist = Math.sqrt(dx * dx + dy * dy);
 
-				const r = getRadius(Math.pow(nodeZ, 1 / 2.5), scale);
+				const r = getRadius(scaleZ(nodeZ), scale, scaleZ(this.maxZ));
 
 				if (dist < r) {
 					if (target === null || dist < target.dist) {
@@ -254,7 +261,7 @@ export class Store {
 				this.areaIdArray[i] = id;
 				this.areaXArray[i] = x;
 				this.areaYArray[i] = y;
-				this.areaZArray[i] = Store.scaleZ(z);
+				this.areaZArray[i] = scaleZ(z);
 			}
 
 			return {

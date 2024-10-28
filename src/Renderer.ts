@@ -2,15 +2,7 @@ import renderShader from "../shaders/render.wgsl?raw";
 import avatarShader from "../shaders/avatar.wgsl?raw";
 
 import { Cache } from "./Cache.js";
-import {
-	AVATAR_DIMENSIONS,
-	COL_COUNT,
-	ROW_COUNT,
-	TEXTURE_DIMENSIONS,
-	assert,
-	getScaleRadius,
-	minRadius,
-} from "./utils.js";
+import { AVATAR_DIMENSIONS, COL_COUNT, L, ROW_COUNT, TEXTURE_DIMENSIONS, assert, maxRadius } from "./utils.js";
 import { Store, Area } from "./Store.js";
 
 const params = new Float32Array([
@@ -19,8 +11,8 @@ const params = new Float32Array([
 	0, // offset_x
 	0, // offset_y
 	1, // scale
-	minRadius, // min_radius
-	1, // scale_radius
+	maxRadius, // max_radius
+	0, // max_z
 ]);
 
 export class Renderer {
@@ -141,12 +133,15 @@ export class Renderer {
 			const nodeMap = nodeBuffer.getMappedRange(0, nodeBufferSize);
 			const nodeArray = new Float32Array(nodeMap, 0, nodeCount * 2);
 			let n = 0;
-			for (const { id, x, y, z } of nodes) {
+			for (const { x, y, z } of nodes) {
 				const i = n++;
 				nodeArray[2 * i] = x;
 				nodeArray[2 * i + 1] = y;
 				zArray[i] = z;
+				params[6] = Math.max(params[6], L * z);
 			}
+
+			console.log("maxZ:", params[6]);
 
 			nodeBuffer.unmap();
 			zBuffer.unmap();
@@ -453,7 +448,6 @@ export class Renderer {
 
 	public setScale(scale: number) {
 		params[4] = scale;
-		params[6] = getScaleRadius(scale);
 	}
 
 	public render() {

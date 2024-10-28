@@ -11,7 +11,7 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 		const key = id.toString(16).padStart(8, "0");
 		const controller = new AbortController();
 
-		fetch(`/profile/${key}`, { signal: controller.signal })
+		fetch(`https://ndimensional-aurora.pages.dev/profile/${key}`, { signal: controller.signal })
 			.then(async (res) => {
 				if (res.ok) {
 					const profile: Profile = await res.json();

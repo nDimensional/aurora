@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./Renderer.js";
-import { Store } from "./Store.js";
-import { Profile, assert, getScale, getMinZ, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
+import { emptyArea, Store } from "./Store.js";
+import { Profile, assert, getScale, getMinZ, MIN_ZOOM, MAX_ZOOM, scaleZ } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
 
@@ -51,6 +51,10 @@ export const Canvas: React.FC<{}> = ({}) => {
 			}
 
 			const scale = getScale(zoomRef.current);
+			if (scale < 0.025) {
+				rendererRef.current?.setAvatars(emptyArea, refresh);
+				return;
+			}
 
 			const w = devicePixelRatio * widthRef.current;
 			const h = devicePixelRatio * heightRef.current;
@@ -59,7 +63,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			const minX = -w / 2 / scale - offsetXRef.current;
 			const maxY = h / 2 / scale - offsetYRef.current;
 			const minY = -h / 2 / scale - offsetYRef.current;
-			const minZ = getMinZ(scale);
+			const minZ = getMinZ(scale, scaleZ(storeRef.current?.maxZ ?? 0));
 
 			const area = storeRef.current.getArea(minX, maxX, minY, maxY, minZ);
 			rendererRef.current?.setAvatars(area, refresh);
@@ -186,6 +190,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			setTarget(null);
 			const oldScale = getScale(zoomRef.current);
 			const newScale = getScale(zoom);
+			console.log("newScale", newScale, zoom);
 			zoomRef.current = zoom;
 			rendererRef.current.setScale(newScale);
 
@@ -232,7 +237,7 @@ export const Canvas: React.FC<{}> = ({}) => {
 			<div id="container" ref={containerRef}>
 				{status && <div id="status">{status}</div>}
 				{target && targetOffset && (
-					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY }}>
+					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY, width: 360 }}>
 						<Target id={target.id} />
 					</div>
 				)}

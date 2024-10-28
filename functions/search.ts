@@ -10,6 +10,11 @@ type Profile = {
 	description: string | null;
 };
 
+const headers = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Method": "GET",
+};
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
 	const { DB } = context.env;
 
@@ -22,7 +27,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 	);
 
 	if (query.q === undefined) {
-		return new Response("Not Found", { status: 404 });
+		return new Response("Not Found", { status: 404, headers });
 	}
 
 	let handle = query.q;
@@ -33,17 +38,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE did = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();
 		if (profile === null) {
-			return new Response("Not Found", { status: 404 });
+			return new Response("Not Found", { status: 404, headers });
 		} else {
-			return Response.json(profile);
+			return Response.json(profile, { headers });
 		}
 	} else {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE handle = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();
 		if (profile === null) {
-			return new Response("Not Found", { status: 404 });
+			return new Response("Not Found", { status: 404, headers });
 		} else {
-			return Response.json(profile);
+			return Response.json(profile, { headers });
 		}
 	}
 };

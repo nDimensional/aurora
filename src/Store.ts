@@ -92,12 +92,12 @@ export class Store {
 
 				let loaded = 0;
 
-				if (res.headers.get("Content-Type") === "application/x-gzip") {
-					const decompress = new DecompressionStream("gzip");
-					await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
-				} else {
-					await res.body.pipeThrough(progressStream).pipeTo(writeStream);
-				}
+				// if (res.headers.get("Content-Type") === "application/x-gzip") {
+				const decompress = new DecompressionStream("gzip");
+				await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
+				// } else {
+				// 	await res.body.pipeThrough(progressStream).pipeTo(writeStream);
+				// }
 
 				console.log(`wrote database to ${path}`);
 				return snapshotFile;

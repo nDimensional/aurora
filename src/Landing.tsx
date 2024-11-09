@@ -2,6 +2,8 @@ import React, { useMemo } from "react";
 
 import { initialZoom } from "./Canvas.js";
 
+const origin = `#0,0,${initialZoom}`;
+
 export const Landing: React.FC<{}> = ({}) => {
 	const supportsWebGPU = useMemo(() => navigator.gpu !== undefined, []);
 	const supportsOPFS = useMemo(
@@ -34,13 +36,13 @@ export const Landing: React.FC<{}> = ({}) => {
 						<p>Aurora will:</p>
 						<ul>
 							<li>
-								download and cache a 194 MB SQLite database (you can clear this anytime through your browser settings)
+								download and cache a 521 MB SQLite database (you can clear this anytime through your browser settings)
 							</li>
-							<li>render a graph of 2.3 million nodes, which might be slow and consume lots of power</li>
+							<li>render a graph of 7.7 million nodes, which might be slow and consume lots of power</li>
 						</ul>
 						<hr />
 						<div>
-							sound good? <a href={`#0,0,${initialZoom}`}>load the graph</a>!
+							sound good? <a href={origin}>load the graph</a>!
 						</div>
 					</>
 				)}

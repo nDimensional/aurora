@@ -356,7 +356,7 @@ export class Renderer {
 		const nodeArray = new Float32Array(nodeMap, 0, this.store.nodeCount * 2);
 		let n = 0;
 
-		for (const { x, y, mass, label } of this.store.nodes()) {
+		for (const { x, y, mass, color: label } of this.store.nodes()) {
 			const i = n++;
 			nodeArray[2 * i] = x;
 			nodeArray[2 * i + 1] = y;

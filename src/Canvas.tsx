@@ -193,10 +193,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const scale = getScale(zoomRef.current);
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
-			const start = performance.now();
 			const target = storeRef.current.query(x, y, scale);
-			const end = performance.now();
-			console.log(`store.query took ${end - start}ms`);
 			setTarget(target);
 		}
 
@@ -233,8 +230,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			return;
 		}
 
-		const { mass, label, x, y } = storeRef.current.get(id);
-		console.log({ mass, label, x, y });
+		const { x, y } = storeRef.current.locate(id);
 		offsetXRef.current = -x;
 		offsetYRef.current = -y;
 		rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);

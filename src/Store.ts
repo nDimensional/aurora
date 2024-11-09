@@ -16,7 +16,7 @@ export const emptyArea: Area = {
 
 export class Store {
 	public static snapshot = "2024-11-07";
-	public static graphURL = "/2024-11-07/atlas.sqlite.gz";
+	public static graphURL = "https://cdn.ndimensional.xyz/2024-11-07/atlas.sqlite.gz";
 
 	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
 		const sqlite3 = await initModule();
@@ -167,7 +167,7 @@ export class Store {
 		this.db.close();
 	}
 
-	public get(id: number): { x: number; y: number; mass: number; label: number } {
+	public get(id: number): { x: number; y: number; mass: number; color: number } {
 		return { ...this.locate(id), ...this.#getNode(id) };
 	}
 
@@ -183,28 +183,28 @@ export class Store {
 		}
 	}
 
-	#getNode(id: number): { mass: number; label: number } {
+	#getNode(id: number): { mass: number; color: number } {
 		try {
 			this.selectNode.bind({ $id: id });
 			assert(this.selectNode.step(), "node not found");
-			const mass = this.selectNode.getFloat(0)!;
-			const label = this.selectNode.getFloat(1)!;
-			return { mass, label };
+			const mass = this.selectNode.getInt(0)!;
+			const color = this.selectNode.getInt(1)!;
+			return { mass, color };
 		} finally {
 			this.selectNode.reset();
 		}
 	}
 
-	public *nodes(): Generator<{ id: number; mass: number; label: number; x: number; y: number }> {
+	public *nodes(): Generator<{ id: number; mass: number; color: number; x: number; y: number }> {
 		try {
 			this.selectAll.bind({ $limit: this.nodeCount });
 			while (this.selectAll.step()) {
 				const id = this.selectAll.getInt(0)!;
-				const mass = this.selectAll.getFloat(1)!;
-				const label = this.selectAll.getFloat(2)!;
+				const mass = this.selectAll.getInt(1)!;
+				const color = this.selectAll.getInt(2)!;
 				const x = this.selectAll.getFloat(3)!;
 				const y = this.selectAll.getFloat(4)!;
-				yield { id, x, y, label, mass };
+				yield { id, x, y, color, mass };
 			}
 		} finally {
 			this.selectAll.reset();
@@ -213,8 +213,6 @@ export class Store {
 
 	public query(x: number, y: number, scale: number): { id: number; x: number; y: number } | null {
 		const displayRadius = getDisplayRadius(scale);
-		console.log("displayRadius", displayRadius);
-		console.log("minRadius * scale", minRadius * scale);
 
 		let target: { id: number; x: number; y: number; dist: number } | null = null;
 		this.queryArea.bind({ $x: x, $y: y, $r: displayRadius });
@@ -232,16 +230,10 @@ export class Store {
 				}
 			}
 
-			console.log("target", target);
-
 			if (target !== null) {
-				const { mass, label } = this.#getNode(target.id);
-				// const r = getRadius(scale);
-				// console.log(target.dist, r);
-				// if (target.dist < r) {
+				const { mass, color: label } = this.#getNode(target.id);
 				console.log({ id: target.id, mass, label, x: target.x, y: target.y });
 				return { id: target.id, x: target.x, y: target.y };
-				// }
 			}
 
 			return null;

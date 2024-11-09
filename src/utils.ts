@@ -1,3 +1,5 @@
+import { Hsluv } from "hsluv";
+
 export type Profile = {
 	id: number;
 	did: string;
@@ -31,29 +33,34 @@ export function getScale(zoom: number) {
 export const MIN_ZOOM = Math.sqrt(F * (F - G)) - 1;
 export const MAX_ZOOM = 9600;
 
-const A = 16;
-const B = 1;
-const C = 4;
-const D = 2;
+// const A = 16;
+// const B = 1;
+// const C = 4;
+// const D = 2;
 
-// export const scaleZ = (z: number) => Math.log10(z / A + 1) / B + D;
-// export const scaleZInv = (z: number) => A * (Math.pow(10, B * (z - D)) - 1);
-export const scaleZ = (z: number) => Math.pow(z / A + 1, 1 / C) / B + D;
-export const scaleZInv = (z: number) => A * (Math.pow(B * (z - D), C) - 1);
+// export const scaleZ = (z: number) => Math.pow(z / A + 1, 1 / C) / B + D;
+// export const scaleZInv = (z: number) => A * (Math.pow(B * (z - D), C) - 1);
 
-export const maxRadius = 64;
-const minRadius = 8;
+export const minRadius = 64;
 
-export const L = 8;
-export function getMinZ(scale: number, maxZ: number) {
-	if (scale >= 1) {
-		return 0;
-	}
+export const P = 6;
 
-	const minZ = map(minRadius / scale, maxRadius, maxRadius / scale, 1, L * maxZ);
-	return scaleZInv(Math.max(minZ, 1));
+export function getRadius(scale: number) {
+	return minRadius / Math.pow(scale, 1 / 3);
 }
 
-export function getRadius(z: number, scale: number, maxZ: number) {
-	return map(z, 1, L * maxZ, maxRadius, maxRadius / scale);
+export function getDisplayRadius(scale: number) {
+	return getRadius(scale) * scale;
 }
+
+const hsluv = new Hsluv();
+
+export const S = 60;
+export const L = 10;
+export const convert = (h: number, s = S, l = L) => {
+	hsluv.hsluv_h = h;
+	hsluv.hsluv_s = s;
+	hsluv.hsluv_l = l;
+	hsluv.hsluvToRgb();
+	return [hsluv.rgb_r, hsluv.rgb_g, hsluv.rgb_b];
+};

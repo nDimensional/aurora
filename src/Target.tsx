@@ -9,8 +9,9 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 
 	useEffect(() => {
 		const key = id.toString(16).padStart(8, "0");
-		const controller = new AbortController();
+		console.log("fetching id", id, key);
 
+		const controller = new AbortController();
 		fetch(`https://ndimensional-aurora.pages.dev/profile/${key}`, { signal: controller.signal })
 			.then(async (res) => {
 				if (res.ok) {

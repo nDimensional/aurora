@@ -5,7 +5,7 @@ import searchImageURL from "../search.svg?url";
 import { Profile } from "./utils.js";
 
 async function search(q: string): Promise<Profile | null> {
-	const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+	const res = await fetch(`https://ndimensional-aurora.pages.dev/search?q=${encodeURIComponent(q)}`);
 	if (res.ok) {
 		return await res.json();
 	} else if (res.status === 404) {
@@ -35,6 +35,7 @@ export const Search: React.FC<SearchProps> = (props) => {
 					event.preventDefault();
 					setVisible(true);
 					inputRef.current?.focus();
+					inputRef.current?.select();
 				}
 			}
 

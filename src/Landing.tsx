@@ -1,10 +1,12 @@
 import React, { useMemo } from "react";
 
+import { initialZoom } from "./Canvas.js";
+
 export const Landing: React.FC<{}> = ({}) => {
 	const supportsWebGPU = useMemo(() => navigator.gpu !== undefined, []);
 	const supportsOPFS = useMemo(
 		() => navigator.storage !== undefined && navigator.storage.getDirectory !== undefined,
-		[]
+		[],
 	);
 
 	return (
@@ -13,7 +15,7 @@ export const Landing: React.FC<{}> = ({}) => {
 				<div>welcome to Aurora!</div>
 				<hr />
 				<p>
-					Aurora is a visualization of the social network <a href="https://bsky.app">BlueSky</a> as of 2024-02-09.
+					Aurora is a visualization of the social network <a href="https://bsky.app">BlueSky</a> as of 2024-11-07.
 				</p>
 				<p>
 					Aurora requires OPFS and WebGPU, which are very new web APIs. This means Aurora can only be viewed on the
@@ -38,7 +40,7 @@ export const Landing: React.FC<{}> = ({}) => {
 						</ul>
 						<hr />
 						<div>
-							sound good? <a href="#graph">load the graph</a>!
+							sound good? <a href={`#0,0,${initialZoom}`}>load the graph</a>!
 						</div>
 					</>
 				)}

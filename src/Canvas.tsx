@@ -3,14 +3,22 @@ import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./Renderer.js";
 import { emptyArea, Store } from "./Store.js";
-import { Profile, assert, getScale, getMinZ, MIN_ZOOM, MAX_ZOOM, scaleZ } from "./utils.js";
+import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
 
 const devicePixelRatio = window.devicePixelRatio;
 console.log("devicePixelRatio", devicePixelRatio);
 
-export const Canvas: React.FC<{}> = ({}) => {
+export const initialZoom = 2000;
+
+export interface CanvasProps {
+	initialOffsetX?: number;
+	initialOffsetY?: number;
+	initialZoom?: number;
+}
+
+export const Canvas: React.FC<CanvasProps> = (props) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const rendererRef = useRef<Renderer | null>(null);
@@ -22,11 +30,12 @@ export const Canvas: React.FC<{}> = ({}) => {
 	const heightRef = useRef<number>(height);
 	const mouseXRef = useRef<number | null>(null);
 	const mouseYRef = useRef<number | null>(null);
-	const offsetXRef = useRef<number>(0);
-	const offsetYRef = useRef<number>(0);
-	const zoomRef = useRef<number>(2000);
+	const offsetXRef = useRef<number>(props.initialOffsetX ?? 0);
+	const offsetYRef = useRef<number>(props.initialOffsetY ?? 0);
+	const zoomRef = useRef<number>(props.initialZoom ?? initialZoom);
 
 	const [status, setStatus] = useState<string | null>(null);
+	const [progress, setProgress] = useState<number>(0);
 	const [error, setError] = useState<any>(null);
 
 	const [isDragging, setIsDragging] = useState(false);
@@ -50,11 +59,17 @@ export const Canvas: React.FC<{}> = ({}) => {
 				return;
 			}
 
-			const scale = getScale(zoomRef.current);
-			if (scale < 0.025) {
+			const z = Math.round(zoomRef.current);
+			const x = Math.round(offsetXRef.current);
+			const y = Math.round(offsetYRef.current);
+			window.location.replace(`#${x},${y},${z}`);
+
+			if (zoomRef.current > 400) {
 				rendererRef.current?.setAvatars(emptyArea, refresh);
 				return;
 			}
+
+			const scale = getScale(zoomRef.current);
 
 			const w = devicePixelRatio * widthRef.current;
 			const h = devicePixelRatio * heightRef.current;
@@ -63,9 +78,8 @@ export const Canvas: React.FC<{}> = ({}) => {
 			const minX = -w / 2 / scale - offsetXRef.current;
 			const maxY = h / 2 / scale - offsetYRef.current;
 			const minY = -h / 2 / scale - offsetYRef.current;
-			const minZ = getMinZ(scale, scaleZ(storeRef.current?.maxZ ?? 0));
 
-			const area = storeRef.current.getArea(minX, maxX, minY, maxY, minZ);
+			const area = storeRef.current.getArea(minX, maxX, minY, maxY);
 			rendererRef.current?.setAvatars(area, refresh);
 		},
 		500,
@@ -73,11 +87,15 @@ export const Canvas: React.FC<{}> = ({}) => {
 	);
 
 	const init = useCallback(async (canvas: HTMLCanvasElement, width: number, height: number) => {
-		setStatus("loading graph...");
-		const store = await Store.create();
+		setStatus("loading graph");
+		setProgress(0);
+		const store = await Store.create((count, total) => setProgress(Math.round((100 * count) / total)));
 
-		setStatus("copying GPU buffers...");
-		const renderer = await Renderer.create(canvas, store.nodeCount, store.nodes());
+		setProgress(0);
+		setStatus("copying GPU buffers");
+		const renderer = await Renderer.create(store, canvas, (count, total) =>
+			setProgress(Math.round((100 * count) / total)),
+		);
 
 		renderer.setSize(width * devicePixelRatio, height * devicePixelRatio);
 		renderer.setOffset(offsetXRef.current, offsetYRef.current);
@@ -175,7 +193,11 @@ export const Canvas: React.FC<{}> = ({}) => {
 			const scale = getScale(zoomRef.current);
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
-			setTarget(storeRef.current.query(x, y, scale));
+			const start = performance.now();
+			const target = storeRef.current.query(x, y, scale);
+			const end = performance.now();
+			console.log(`store.query took ${end - start}ms`);
+			setTarget(target);
 		}
 
 		isDraggingRef.current = null;
@@ -190,7 +212,6 @@ export const Canvas: React.FC<{}> = ({}) => {
 			setTarget(null);
 			const oldScale = getScale(zoomRef.current);
 			const newScale = getScale(zoom);
-			console.log("newScale", newScale, zoom);
 			zoomRef.current = zoom;
 			rendererRef.current.setScale(newScale);
 
@@ -212,12 +233,12 @@ export const Canvas: React.FC<{}> = ({}) => {
 			return;
 		}
 
-		const { x, y, z } = storeRef.current.get(id);
-		console.log({ x, y, z });
+		const { mass, label, x, y } = storeRef.current.get(id);
+		console.log({ mass, label, x, y });
 		offsetXRef.current = -x;
 		offsetYRef.current = -y;
 		rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
-		zoomRef.current = 0;
+		zoomRef.current = MIN_ZOOM;
 		rendererRef.current.setScale(getScale(zoomRef.current));
 		refresh();
 		setTarget({ id, x, y });
@@ -235,7 +256,16 @@ export const Canvas: React.FC<{}> = ({}) => {
 		<>
 			<Search onLocate={handleLocate} />
 			<div id="container" ref={containerRef}>
-				{status && <div id="status">{status}</div>}
+				{status && (
+					<div id="status">
+						<div>
+							<div>{status}</div>
+							<div id="progress">
+								<progress value={progress} max={100}></progress>
+							</div>
+						</div>
+					</div>
+				)}
 				{target && targetOffset && (
 					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY, width: 360 }}>
 						<Target id={target.id} />

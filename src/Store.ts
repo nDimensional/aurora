@@ -1,45 +1,30 @@
 import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
-import { COL_COUNT, ROW_COUNT, assert, getRadius, scaleZ, scaleZInv } from "./utils.js";
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex } from "@noble/hashes/utils";
+import { COL_COUNT, ROW_COUNT, assert, getDisplayRadius, getRadius, minRadius } from "./utils.js";
 
 export type Area = {
 	id: Uint32Array;
 	x: Float32Array;
 	y: Float32Array;
-	z: Float32Array;
 };
 
 export const emptyArea: Area = {
 	id: new Uint32Array([]),
 	x: new Float32Array([]),
 	y: new Float32Array([]),
-	z: new Float32Array([]),
 };
 
 export class Store {
-	public static hostURL = "https://cdn.ndimensional.xyz";
-	public static snapshot = "2024-09-09-1e6";
-	// public static databaseKey = "atlas.sqlite.gz";
-	public static databaseKey = "atlas-2024-09-09-1e6.sqlite.gz";
+	public static snapshot = "2024-11-07";
+	public static graphURL = "/2024-11-07/atlas.sqlite.gz";
 
-	// public static hostURL = "";
-	// public static snapshot = "2024-09-09";
-	// public static snapshot = "2024-09-09-1e6";
-
-	// public static apiURL = "https://aurora-server-spring-hill-5575.fly.dev";
-	// public static apiURL = "http://localhost:8000";
-
-	public static async create(): Promise<Store> {
+	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
 		const sqlite3 = await initModule();
 
-		const fileHandle = await Store.getSnapshot();
+		const fileHandle = await Store.getSnapshot(onProgress);
 		const file = await fileHandle.getFile();
 		const arrayBuffer = await file.arrayBuffer();
 		const array = new Uint8Array(arrayBuffer);
-
-		console.log("got database hash", bytesToHex(sha256(array)));
 
 		/**
 		 * From https://www.sqlite.org/c3ref/deserialize.html:
@@ -70,7 +55,7 @@ export class Store {
 		return new Store(sqlite3, db);
 	}
 
-	private static async getSnapshot(): Promise<FileSystemFileHandle> {
+	private static async getSnapshot(onProgress?: (count: number, total: number) => void): Promise<FileSystemFileHandle> {
 		const filename = "atlas.sqlite";
 		const path = `${Store.snapshot}/${filename}`;
 
@@ -85,16 +70,33 @@ export class Store {
 				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
 				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
 
-				const graphURL = `${Store.hostURL}/${Store.databaseKey}`;
-				console.log(`fetching ${graphURL}`);
+				// const graphURL = `${Store.hostURL}/${Store.databaseKey}`;
+				console.log(`fetching ${Store.graphURL}`);
 
-				const res = await fetch(graphURL);
+				const res = await fetch(Store.graphURL);
 				assert(res.ok && res.body !== null);
+
+				// Get the total size if available
+				const contentLength = res.headers.get("Content-Length");
+				const total = contentLength ? parseInt(contentLength, 10) : null;
+
+				const progressStream = new TransformStream({
+					transform(chunk, controller) {
+						controller.enqueue(chunk);
+						if (total !== null) {
+							loaded += chunk.length;
+							onProgress?.(loaded, total);
+						}
+					},
+				});
+
+				let loaded = 0;
+
 				if (res.headers.get("Content-Type") === "application/x-gzip") {
 					const decompress = new DecompressionStream("gzip");
-					await res.body.pipeThrough(decompress).pipeTo(writeStream);
+					await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
 				} else {
-					await res.body.pipeTo(writeStream);
+					await res.body.pipeThrough(progressStream).pipeTo(writeStream);
 				}
 
 				console.log(`wrote database to ${path}`);
@@ -106,9 +108,10 @@ export class Store {
 	}
 
 	public nodeCount: number;
-	public maxZ: number;
+	public maxMass: number = 0;
 
-	private select: PreparedStatement;
+	private selectAll: PreparedStatement;
+	private selectUser: PreparedStatement;
 	private selectNode: PreparedStatement;
 	private selectArea: PreparedStatement;
 	private queryArea: PreparedStatement;
@@ -127,98 +130,121 @@ export class Store {
 		}
 
 		{
-			const selectMaxZ = db.prepare("SELECT maxZ FROM users ORDER BY maxZ DESC LIMIT 1");
-			assert(selectMaxZ.step());
-			this.maxZ = selectMaxZ.getInt(0) ?? 0;
-			selectMaxZ.finalize();
-
-			console.log("maxZ:", this.maxZ, scaleZ(this.maxZ));
+			const getMaxMass = db.prepare("SELECT max(mass) FROM nodes");
+			assert(getMaxMass.step());
+			this.maxMass = getMaxMass.getInt(0) ?? 0;
+			getMaxMass.finalize();
 		}
 
-		this.select = db.prepare("SELECT id, minX, minY, minZ FROM users LIMIT $limit");
-		this.selectNode = db.prepare("SELECT minX, minY, minZ FROM users WHERE id = $id");
-		this.selectArea = db.prepare(
-			`SELECT id, minX, minY, minZ FROM users WHERE (
-				($minX <= minX AND maxX <= $maxX) AND
-				($minY <= minY AND maxY <= $maxY) AND
-				($minZ <= minZ)
-			) LIMIT $limit`,
-		);
+		this.selectAll = db.prepare(`
+		  SELECT nodes.id, nodes.mass, nodes.color, users.minX, users.minY
+			FROM users JOIN nodes ON users.id = nodes.id LIMIT $limit
+		`);
 
-		this.queryArea = db.prepare(`SELECT id, minX, minY, minZ FROM users WHERE (
-			(($x - $r) <= minX AND maxX <= ($x + $r)) AND
-			(($y - $r) <= minY AND maxY <= ($y + $r))
-		)`);
+		this.selectNode = db.prepare("SELECT nodes.mass, nodes.color FROM nodes WHERE id = $id");
+		this.selectUser = db.prepare("SELECT users.minX, users.minY FROM users WHERE id = $id");
+		this.selectArea = db.prepare(`
+  		SELECT id, minX, minY
+      FROM users
+      WHERE (($minX <= minX AND maxX <= $maxX)
+        AND ($minY <= minY AND maxY <= $maxY))
+      LIMIT $limit
+		`);
+
+		this.queryArea = db.prepare(`
+  		SELECT id, minX, minY
+  		FROM users
+  		WHERE ((($x - $r) <= minX AND maxX <= ($x + $r))
+  		  AND (($y - $r) <= minY AND maxY <= ($y + $r)))
+		`);
 	}
 
 	public close() {
-		this.select.finalize();
-		this.selectNode.finalize();
+		this.selectAll.finalize();
+		this.selectUser.finalize();
 		this.selectArea.finalize();
 		this.queryArea.finalize();
 		this.db.close();
 	}
 
-	public get(id: number): { x: number; y: number; z: number } {
+	public get(id: number): { x: number; y: number; mass: number; label: number } {
+		return { ...this.locate(id), ...this.#getNode(id) };
+	}
+
+	public locate(id: number): { x: number; y: number } {
+		try {
+			this.selectUser.bind({ $id: id });
+			assert(this.selectUser.step(), "node not found");
+			const x = this.selectUser.getInt(0)!;
+			const y = this.selectUser.getInt(1)!;
+			return { x, y };
+		} finally {
+			this.selectUser.reset();
+		}
+	}
+
+	#getNode(id: number): { mass: number; label: number } {
 		try {
 			this.selectNode.bind({ $id: id });
 			assert(this.selectNode.step(), "node not found");
-			const x = this.selectNode.getInt(0)!;
-			const y = this.selectNode.getInt(1)!;
-			const z = this.selectNode.getInt(2)!;
-			return { x, y, z: scaleZ(z) };
+			const mass = this.selectNode.getFloat(0)!;
+			const label = this.selectNode.getFloat(1)!;
+			return { mass, label };
 		} finally {
 			this.selectNode.reset();
 		}
 	}
 
-	public *nodes(): Generator<{ id: number; x: number; y: number; z: number }> {
+	public *nodes(): Generator<{ id: number; mass: number; label: number; x: number; y: number }> {
 		try {
-			this.select.bind({ $limit: this.nodeCount });
-			while (this.select.step()) {
-				const id = this.select.getInt(0)!;
-				const x = this.select.getInt(1)!;
-				const y = this.select.getInt(2)!;
-				const z = this.select.getInt(3)!;
-				yield { id, x, y, z: scaleZ(z) };
+			this.selectAll.bind({ $limit: this.nodeCount });
+			while (this.selectAll.step()) {
+				const id = this.selectAll.getInt(0)!;
+				const mass = this.selectAll.getFloat(1)!;
+				const label = this.selectAll.getFloat(2)!;
+				const x = this.selectAll.getFloat(3)!;
+				const y = this.selectAll.getFloat(4)!;
+				yield { id, x, y, label, mass };
 			}
 		} finally {
-			this.select.reset();
+			this.selectAll.reset();
 		}
 	}
 
 	public query(x: number, y: number, scale: number): { id: number; x: number; y: number } | null {
-		console.log("query", x, y, scale);
-		console.log(this.maxZ, scaleZ(this.maxZ), getRadius(scaleZ(this.maxZ), scale, scaleZ(this.maxZ)));
-		const maxR = getRadius(scaleZ(this.maxZ), scale, scaleZ(this.maxZ));
+		const displayRadius = getDisplayRadius(scale);
+		console.log("displayRadius", displayRadius);
+		console.log("minRadius * scale", minRadius * scale);
 
 		let target: { id: number; x: number; y: number; dist: number } | null = null;
-		console.log("querying", { $x: x, $y: y, $r: maxR });
-		this.queryArea.bind({ $x: x, $y: y, $r: maxR });
+		this.queryArea.bind({ $x: x, $y: y, $r: displayRadius });
 		try {
 			while (this.queryArea.step()) {
 				const id = this.queryArea.getInt(0)!;
-				const nodeX = this.queryArea.getInt(1)!;
-				const nodeY = this.queryArea.getInt(2)!;
-				const nodeZ = this.queryArea.getInt(3)!;
+				const nodeX = this.queryArea.getFloat(1)!;
+				const nodeY = this.queryArea.getFloat(2)!;
 				const dx = x - nodeX;
 				const dy = y - nodeY;
 				const dist = Math.sqrt(dx * dx + dy * dy);
 
-				const r = getRadius(scaleZ(nodeZ), scale, scaleZ(this.maxZ));
-
-				if (dist < r) {
-					if (target === null || dist < target.dist) {
-						target = { id, x: nodeX, y: nodeY, dist };
-					}
+				if (target === null || dist < target.dist) {
+					target = { id, x: nodeX, y: nodeY, dist };
 				}
 			}
 
+			console.log("target", target);
+
 			if (target !== null) {
+				const { mass, label } = this.#getNode(target.id);
+				// const r = getRadius(scale);
+				// console.log(target.dist, r);
+				// if (target.dist < r) {
+				console.log({ id: target.id, mass, label, x: target.x, y: target.y });
 				return { id: target.id, x: target.x, y: target.y };
-			} else {
-				return null;
+				// }
 			}
+
+			return null;
 		} finally {
 			this.queryArea.reset();
 		}
@@ -228,47 +254,41 @@ export class Store {
 	private areaIdArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaXArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaYArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaZArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaIdArray = new Uint32Array(this.areaIdArrayBuffer);
 	private areaXArray = new Float32Array(this.areaXArrayBuffer);
 	private areaYArray = new Float32Array(this.areaYArrayBuffer);
-	private areaZArray = new Float32Array(this.areaZArrayBuffer);
 
-	public getArea(minX: number, maxX: number, minY: number, maxY: number, minZ: number): Area {
+	public getArea(minX: number, maxX: number, minY: number, maxY: number): Area {
 		this.selectArea.bind({
 			$minX: minX,
 			$maxX: maxX,
 			$minY: minY,
 			$maxY: maxY,
-			$minZ: minZ,
 			$limit: Store.areaLimit,
 		});
 
 		try {
-			const avatars: { id: number; x: number; y: number; z: number }[] = [];
+			const avatars: { id: number; x: number; y: number }[] = [];
 			while (this.selectArea.step()) {
 				avatars.push({
 					id: this.selectArea.getInt(0)!,
 					x: this.selectArea.getFloat(1)!,
 					y: this.selectArea.getFloat(2)!,
-					z: this.selectArea.getFloat(3)!,
 				});
 			}
 
 			avatars.sort((a, b) => (a.id < b.id ? -1 : 1));
 
-			for (const [i, { id, x, y, z }] of avatars.entries()) {
+			for (const [i, { id, x, y }] of avatars.entries()) {
 				this.areaIdArray[i] = id;
 				this.areaXArray[i] = x;
 				this.areaYArray[i] = y;
-				this.areaZArray[i] = scaleZ(z);
 			}
 
 			return {
 				id: this.areaIdArray.subarray(0, avatars.length),
 				x: this.areaXArray.subarray(0, avatars.length),
 				y: this.areaYArray.subarray(0, avatars.length),
-				z: this.areaZArray.subarray(0, avatars.length),
 			};
 		} finally {
 			this.selectArea.reset();

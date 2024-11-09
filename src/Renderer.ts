@@ -2,24 +2,42 @@ import renderShader from "../shaders/render.wgsl?raw";
 import avatarShader from "../shaders/avatar.wgsl?raw";
 
 import { Cache } from "./Cache.js";
-import { AVATAR_DIMENSIONS, COL_COUNT, L, ROW_COUNT, TEXTURE_DIMENSIONS, assert, maxRadius } from "./utils.js";
+import {
+	AVATAR_DIMENSIONS,
+	COL_COUNT,
+	L,
+	ROW_COUNT,
+	TEXTURE_DIMENSIONS,
+	assert,
+	minRadius,
+	convert,
+	map,
+	S,
+	getRadius,
+} from "./utils.js";
 import { Store, Area } from "./Store.js";
+import { blake3 } from "@noble/hashes/blake3";
+import { bytesToHex } from "@noble/hashes/utils";
 
 const params = new Float32Array([
-	0, // width
-	0, // height
-	0, // offset_x
-	0, // offset_y
-	1, // scale
-	maxRadius, // max_radius
-	0, // max_z
+	0, // 0: width
+	0, // 1: height
+	0, // 2: offset_x
+	0, // 3: offset_y
+	1, // 4: scale
+	0, // 5: radius
+	1, // 6: scale_radius
 ]);
+
+params[5] = minRadius;
+
+// const colorMapSampleSize = 1024;
 
 export class Renderer {
 	public static async create(
+		store: Store,
 		canvas: HTMLCanvasElement,
-		nodeCount: number,
-		nodes: Iterable<{ id: number; x: number; y: number; z: number }>,
+		onProgress?: (count: number, total: number) => void,
 	) {
 		const adapter = await navigator.gpu.requestAdapter();
 		assert(adapter !== null);
@@ -31,6 +49,7 @@ export class Renderer {
 		assert(context !== null);
 
 		const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+		// const presentationFormat = "rgba8unorm";
 		context.configure({
 			device,
 			format: presentationFormat,
@@ -38,17 +57,38 @@ export class Renderer {
 		});
 
 		const cache = await Cache.create();
-		return new Renderer(cache, context, device, presentationFormat, nodeCount, nodes);
+		const renderer = new Renderer(store, cache, context, device, presentationFormat);
+		await renderer.load(onProgress);
+		return renderer;
 	}
 
 	private static squareIndexBufferData = new Uint16Array([0, 1, 2, 2, 0, 3]);
-	private static squareVertexBufferData = new Float32Array([-1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0]);
+
+	// prettier-ignore
+	private static squareVertexBufferData = new Float32Array([
+	  [-1.0,  1.0],
+		[ 1.0,  1.0],
+		[ 1.0, -1.0],
+		[-1.0, -1.0],
+	].flat());
 
 	vertexBuffer: GPUBuffer;
 	indexBuffer: GPUBuffer;
 	paramBuffer: GPUBuffer;
 
-	// avatarBuffer: GPUBuffer;
+	// colorMapBuffer: GPUBuffer;
+	// colorMapBufferSize: number;
+
+	/** color buffer has rgb values like [][3]f32 */
+	colorBuffer: GPUBuffer;
+	colorBufferSize: number;
+
+	zBuffer: GPUBuffer;
+	zBufferSize: number;
+
+	nodeBuffer: GPUBuffer;
+	nodeBufferSize: number;
+
 	avatarXBuffer: GPUBuffer;
 	avatarYBuffer: GPUBuffer;
 	avatarZBuffer: GPUBuffer;
@@ -65,13 +105,11 @@ export class Renderer {
 	avatarCount: number = 0;
 
 	constructor(
+		readonly store: Store,
 		readonly cache: Cache,
-		// readonly canvas: HTMLCanvasElement,
 		readonly context: GPUCanvasContext,
 		readonly device: GPUDevice,
 		readonly presentationFormat: GPUTextureFormat,
-		readonly nodeCount: number,
-		nodes: Iterable<{ id: number; x: number; y: number; z: number }>,
 	) {
 		// initialize param buffer
 		const paramBufferSize = params.length * 4;
@@ -110,42 +148,29 @@ export class Renderer {
 		});
 
 		// initialize node buffer
-		const nodeBufferSize = nodeCount * 2 * 4;
-		const nodeBuffer = this.device.createBuffer({
+		this.nodeBufferSize = store.nodeCount * 2 * 4;
+		this.nodeBuffer = this.device.createBuffer({
 			label: "nodeBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-			size: nodeBufferSize,
+			size: this.nodeBufferSize,
 			mappedAtCreation: true,
 		});
 
-		const zBufferSize = nodeCount * 4;
-		const zBuffer = this.device.createBuffer({
+		this.zBufferSize = store.nodeCount * 4;
+		this.zBuffer = this.device.createBuffer({
 			label: "zBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-			size: zBufferSize,
+			size: this.zBufferSize,
 			mappedAtCreation: true,
 		});
 
-		{
-			const zMap = zBuffer.getMappedRange(0, zBufferSize);
-			const zArray = new Float32Array(zMap, 0, nodeCount);
-
-			const nodeMap = nodeBuffer.getMappedRange(0, nodeBufferSize);
-			const nodeArray = new Float32Array(nodeMap, 0, nodeCount * 2);
-			let n = 0;
-			for (const { x, y, z } of nodes) {
-				const i = n++;
-				nodeArray[2 * i] = x;
-				nodeArray[2 * i + 1] = y;
-				zArray[i] = z;
-				params[6] = Math.max(params[6], L * z);
-			}
-
-			console.log("maxZ:", params[6]);
-
-			nodeBuffer.unmap();
-			zBuffer.unmap();
-		}
+		this.colorBufferSize = store.nodeCount * 4;
+		this.colorBuffer = this.device.createBuffer({
+			label: "colorBuffer",
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+			size: this.colorBufferSize,
+			mappedAtCreation: true,
+		});
 
 		// initialize vertex buffer
 		const vertexBufferSize = Renderer.squareVertexBufferData.length * 4;
@@ -183,6 +208,7 @@ export class Renderer {
 				{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
 				{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+				{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -191,8 +217,9 @@ export class Renderer {
 			layout: nodeBindGroupLayout,
 			entries: [
 				{ binding: 0, resource: { buffer: this.paramBuffer } },
-				{ binding: 1, resource: { buffer: nodeBuffer } },
-				{ binding: 2, resource: { buffer: zBuffer } },
+				{ binding: 1, resource: { buffer: this.nodeBuffer } },
+				{ binding: 2, resource: { buffer: this.zBuffer } },
+				{ binding: 3, resource: { buffer: this.colorBuffer } },
 			],
 		});
 
@@ -255,7 +282,6 @@ export class Renderer {
 				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
-				{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -267,8 +293,7 @@ export class Renderer {
 				{ binding: 1, resource: this.texture.createView() },
 				{ binding: 2, resource: { buffer: this.avatarXBuffer } },
 				{ binding: 3, resource: { buffer: this.avatarYBuffer } },
-				{ binding: 4, resource: { buffer: this.avatarZBuffer } },
-				{ binding: 5, resource: { buffer: this.tileBuffer } },
+				{ binding: 4, resource: { buffer: this.tileBuffer } },
 			],
 		});
 
@@ -320,15 +345,49 @@ export class Renderer {
 		console.log("Initialized Renderer");
 	}
 
+	private async load(onProgress?: (count: number, total: number) => void) {
+		const colorMap = this.colorBuffer.getMappedRange(0, this.colorBufferSize);
+		const colorArray = new Uint8Array(colorMap, 0, this.store.nodeCount * 4);
+
+		const zMap = this.zBuffer.getMappedRange(0, this.zBufferSize);
+		const zArray = new Float32Array(zMap, 0, this.store.nodeCount);
+
+		const nodeMap = this.nodeBuffer.getMappedRange(0, this.nodeBufferSize);
+		const nodeArray = new Float32Array(nodeMap, 0, this.store.nodeCount * 2);
+		let n = 0;
+
+		for (const { x, y, mass, label } of this.store.nodes()) {
+			const i = n++;
+			nodeArray[2 * i] = x;
+			nodeArray[2 * i + 1] = y;
+			zArray[i] = mass;
+
+			const S = 85;
+			const [r, g, b] = convert(360 * (label / 256), S, 100 * (mass / 256));
+
+			colorArray[4 * i] = Math.floor(r * 256);
+			colorArray[4 * i + 1] = Math.floor(g * 256);
+			colorArray[4 * i + 2] = Math.floor(b * 256);
+			colorArray[4 * i + 3] = 1.0;
+
+			if (n % 10000 === 0) {
+				onProgress?.(n, this.store.nodeCount);
+				await new Promise((resolve) => requestIdleCallback(resolve, { timeout: 50 }));
+			}
+		}
+
+		this.nodeBuffer.unmap();
+		this.zBuffer.unmap();
+		this.colorBuffer.unmap();
+	}
+
 	private areaIdCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaXCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaYCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaZCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private area: Area = {
 		id: new Uint32Array(this.areaIdCacheBuffer),
 		x: new Float32Array(this.areaXCacheBuffer),
 		y: new Float32Array(this.areaYCacheBuffer),
-		z: new Float32Array(this.areaZCacheBuffer),
 	};
 
 	/** avatar-to-tile (avatar is an index into this array) */
@@ -339,12 +398,12 @@ export class Renderer {
 
 	/** tiles */
 	private recycling = new Set<number>(Array.from({ length: ROW_COUNT * COL_COUNT - 1 }, (_, index) => index + 1));
-	private recycle(): number {
+	private recycle(): number | null {
 		for (const tile of this.recycling) {
 			return tile;
 		}
 
-		throw new Error("texture atlas overflow");
+		return null;
 	}
 
 	/** area is a sorted array of node ids */
@@ -381,10 +440,8 @@ export class Renderer {
 		this.area.id.set(area.id);
 		this.avatarCount = area.id.length;
 
-		// this.device.queue.writeBuffer(this.avatarBuffer, 0, area.id);
 		this.device.queue.writeBuffer(this.avatarXBuffer, 0, area.x);
 		this.device.queue.writeBuffer(this.avatarYBuffer, 0, area.y);
-		this.device.queue.writeBuffer(this.avatarZBuffer, 0, area.z);
 		this.device.queue.writeBuffer(this.tileBuffer, 0, this.tiles);
 	}
 
@@ -399,29 +456,49 @@ export class Renderer {
 		const image = this.cache.get(id);
 		if (image !== undefined) {
 			const tile = this.recycle();
-			this.recycling.delete(tile);
-			this.tileMap.set(id, tile);
-			this.copyTile(tile, image);
+			if (tile === null) {
+				console.log("texture atlas full, ignoring", id);
+			} else {
+				this.recycling.delete(tile);
+				this.tileMap.set(id, tile);
+				this.copyTile(tile, image);
+			}
+			return;
+		}
+
+		// Skip if we're overloaded
+		if (this.cache.queueSize() > Cache.MAX_QUEUE_SIZE) {
 			return;
 		}
 
 		// Fetch the image
 		this.tileMap.set(id, 0);
-		this.cache.fetch(id).then((image) => {
-			if (this.tileMap.get(id) === 0) {
+		this.cache.fetch(id).then(
+			(image) => {
+				if (this.tileMap.get(id) !== 0) {
+					return;
+				}
+
 				const tile = this.recycle();
+				if (tile === null) {
+					return;
+				}
+
 				this.recycling.delete(tile);
 				this.tileMap.set(id, tile);
 				this.copyTile(tile, image);
 				refresh?.();
-			}
-		});
+			},
+			(err) => console.error(err),
+		);
 	}
 
 	private removeAvatar(id: number) {
 		const tile = this.tileMap.get(id);
 		if (tile !== undefined && tile !== 0) {
 			this.recycling.add(tile);
+		} else {
+			this.cache.cancel(id);
 		}
 	}
 
@@ -448,6 +525,7 @@ export class Renderer {
 
 	public setScale(scale: number) {
 		params[4] = scale;
+		params[5] = getRadius(scale);
 	}
 
 	public render() {
@@ -478,7 +556,7 @@ export class Renderer {
 		passEncoder.setBindGroup(0, this.nodeBindGroup);
 		passEncoder.setVertexBuffer(0, this.vertexBuffer);
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
-		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.nodeCount);
+		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.store.nodeCount);
 	}
 
 	private renderAvatars(passEncoder: GPURenderPassEncoder) {

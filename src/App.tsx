@@ -16,9 +16,10 @@ export const App: React.FC<{}> = ({}) => {
 		return () => window.removeEventListener("hashchange", handleHashChange);
 	}, []);
 
-	if (hash === "graph") {
-		return <Canvas />;
-	} else {
+	if (hash === "") {
 		return <Landing />;
+	} else {
+		const [x, y, zoom] = hash.split(",").map((f) => parseInt(f));
+		return <Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} />;
 	}
 };

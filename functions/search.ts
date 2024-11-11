@@ -31,8 +31,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 	}
 
 	let handle = query.q;
-	if (handle.startsWith("@")) handle = handle.slice(1);
-	if (!handle.includes(".")) handle = `${handle}.bsky.social`;
 
 	if (handle.startsWith("did:")) {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE did = ?");
@@ -43,6 +41,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 			return Response.json(profile, { headers });
 		}
 	} else {
+		if (handle.startsWith("@")) handle = handle.slice(1);
+		if (!handle.includes(".")) handle = `${handle}.bsky.social`;
+
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE handle = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();
 		if (profile === null) {

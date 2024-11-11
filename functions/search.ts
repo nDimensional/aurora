@@ -30,8 +30,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 		return new Response("Not Found", { status: 404, headers });
 	}
 
-	let handle = query.q;
-
+	let handle = decodeURIComponent(query.q);
 	if (handle.startsWith("did:")) {
 		const stmt = DB.prepare("SELECT id, did, handle, display_name, description FROM profiles WHERE did = ?");
 		const profile: Profile | null = await stmt.bind(handle).first<Profile>();

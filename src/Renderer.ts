@@ -1,37 +1,18 @@
-import renderShader from "../shaders/render.wgsl?raw";
+import nodeShader from "../shaders/node.wgsl?raw";
 import avatarShader from "../shaders/avatar.wgsl?raw";
 
 import { Cache } from "./Cache.js";
 import {
 	AVATAR_DIMENSIONS,
 	COL_COUNT,
-	L,
 	ROW_COUNT,
 	TEXTURE_DIMENSIONS,
 	assert,
 	minRadius,
 	convert,
-	map,
-	S,
 	getRadius,
 } from "./utils.js";
 import { Store, Area } from "./Store.js";
-import { blake3 } from "@noble/hashes/blake3";
-import { bytesToHex } from "@noble/hashes/utils";
-
-const params = new Float32Array([
-	0, // 0: width
-	0, // 1: height
-	0, // 2: offset_x
-	0, // 3: offset_y
-	1, // 4: scale
-	0, // 5: radius
-	1, // 6: scale_radius
-]);
-
-params[5] = minRadius;
-
-// const colorMapSampleSize = 1024;
 
 export class Renderer {
 	public static async create(
@@ -49,7 +30,6 @@ export class Renderer {
 		assert(context !== null);
 
 		const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-		// const presentationFormat = "rgba8unorm";
 		context.configure({
 			device,
 			format: presentationFormat,
@@ -76,22 +56,14 @@ export class Renderer {
 	indexBuffer: GPUBuffer;
 	paramBuffer: GPUBuffer;
 
-	// colorMapBuffer: GPUBuffer;
-	// colorMapBufferSize: number;
-
-	/** color buffer has rgb values like [][3]f32 */
 	colorBuffer: GPUBuffer;
 	colorBufferSize: number;
-
-	zBuffer: GPUBuffer;
-	zBufferSize: number;
 
 	nodeBuffer: GPUBuffer;
 	nodeBufferSize: number;
 
 	avatarXBuffer: GPUBuffer;
 	avatarYBuffer: GPUBuffer;
-	avatarZBuffer: GPUBuffer;
 
 	tileBuffer: GPUBuffer;
 	texture: GPUTexture;
@@ -104,6 +76,15 @@ export class Renderer {
 	avatarBindGroup: GPUBindGroup;
 	avatarCount: number = 0;
 
+	readonly params = new Float32Array([
+		0, // 0: width
+		0, // 1: height
+		0, // 2: offset_x
+		0, // 3: offset_y
+		1, // 4: scale
+		0, // 5: radius
+	]);
+
 	constructor(
 		readonly store: Store,
 		readonly cache: Cache,
@@ -112,7 +93,7 @@ export class Renderer {
 		readonly presentationFormat: GPUTextureFormat,
 	) {
 		// initialize param buffer
-		const paramBufferSize = params.length * 4;
+		const paramBufferSize = this.params.length * 4;
 		this.paramBuffer = device.createBuffer({
 			label: "paramBuffer",
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -133,12 +114,6 @@ export class Renderer {
 			size: avatarBufferSize,
 		});
 
-		this.avatarZBuffer = device.createBuffer({
-			label: "avatarZBuffer",
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-			size: avatarBufferSize,
-		});
-
 		// initialize tile buffer
 		const tileBufferSize = ROW_COUNT * COL_COUNT * 4;
 		this.tileBuffer = device.createBuffer({
@@ -153,14 +128,6 @@ export class Renderer {
 			label: "nodeBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
 			size: this.nodeBufferSize,
-			mappedAtCreation: true,
-		});
-
-		this.zBufferSize = store.nodeCount * 4;
-		this.zBuffer = this.device.createBuffer({
-			label: "zBuffer",
-			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-			size: this.zBufferSize,
 			mappedAtCreation: true,
 		});
 
@@ -208,7 +175,6 @@ export class Renderer {
 				{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
 				{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
-				{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -218,12 +184,11 @@ export class Renderer {
 			entries: [
 				{ binding: 0, resource: { buffer: this.paramBuffer } },
 				{ binding: 1, resource: { buffer: this.nodeBuffer } },
-				{ binding: 2, resource: { buffer: this.zBuffer } },
-				{ binding: 3, resource: { buffer: this.colorBuffer } },
+				{ binding: 2, resource: { buffer: this.colorBuffer } },
 			],
 		});
 
-		const renderShaderModule = device.createShaderModule({ label: "renderShaderModule", code: renderShader });
+		const nodeShaderModule = device.createShaderModule({ label: "nodeShaderModule", code: nodeShader });
 
 		this.nodePipeline = device.createRenderPipeline({
 			label: "pipeline",
@@ -232,7 +197,7 @@ export class Renderer {
 				bindGroupLayouts: [nodeBindGroupLayout],
 			}),
 			vertex: {
-				module: renderShaderModule,
+				module: nodeShaderModule,
 				entryPoint: "vert_node",
 				buffers: [
 					{
@@ -243,7 +208,7 @@ export class Renderer {
 				],
 			},
 			fragment: {
-				module: renderShaderModule,
+				module: nodeShaderModule,
 				entryPoint: "frag_node",
 				targets: [
 					{
@@ -349,9 +314,6 @@ export class Renderer {
 		const colorMap = this.colorBuffer.getMappedRange(0, this.colorBufferSize);
 		const colorArray = new Uint8Array(colorMap, 0, this.store.nodeCount * 4);
 
-		const zMap = this.zBuffer.getMappedRange(0, this.zBufferSize);
-		const zArray = new Float32Array(zMap, 0, this.store.nodeCount);
-
 		const nodeMap = this.nodeBuffer.getMappedRange(0, this.nodeBufferSize);
 		const nodeArray = new Float32Array(nodeMap, 0, this.store.nodeCount * 2);
 		let n = 0;
@@ -360,7 +322,6 @@ export class Renderer {
 			const i = n++;
 			nodeArray[2 * i] = x;
 			nodeArray[2 * i + 1] = y;
-			zArray[i] = mass;
 
 			const S = 85;
 			const [r, g, b] = convert(360 * (label / 256), S, 100 * (mass / 256));
@@ -377,7 +338,6 @@ export class Renderer {
 		}
 
 		this.nodeBuffer.unmap();
-		this.zBuffer.unmap();
 		this.colorBuffer.unmap();
 	}
 
@@ -514,22 +474,22 @@ export class Renderer {
 	}
 
 	public setSize(width: number, height: number) {
-		params[0] = width;
-		params[1] = height;
+		this.params[0] = width;
+		this.params[1] = height;
 	}
 
 	public setOffset(offsetX: number, offsetY: number) {
-		params[2] = offsetX;
-		params[3] = offsetY;
+		this.params[2] = offsetX;
+		this.params[3] = offsetY;
 	}
 
 	public setScale(scale: number) {
-		params[4] = scale;
-		params[5] = getRadius(scale);
+		this.params[4] = scale;
+		this.params[5] = getRadius(scale);
 	}
 
 	public render() {
-		this.device.queue.writeBuffer(this.paramBuffer, 0, params);
+		this.device.queue.writeBuffer(this.paramBuffer, 0, this.params);
 
 		const commandEncoder = this.device.createCommandEncoder();
 		const textureView = this.context.getCurrentTexture().createView();

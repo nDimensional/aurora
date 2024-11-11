@@ -1,6 +1,6 @@
 import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
-import { COL_COUNT, ROW_COUNT, assert, getDisplayRadius, getRadius, minRadius } from "./utils.js";
+import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export type Area = {
 	id: Uint32Array;
@@ -92,12 +92,12 @@ export class Store {
 
 				let loaded = 0;
 
-				// if (res.headers.get("Content-Type") === "application/x-gzip") {
-				const decompress = new DecompressionStream("gzip");
-				await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
-				// } else {
-				// 	await res.body.pipeThrough(progressStream).pipeTo(writeStream);
-				// }
+				if (res.headers.get("Content-Type") === "application/x-gzip") {
+					const decompress = new DecompressionStream("gzip");
+					await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
+				} else {
+					await res.body.pipeThrough(progressStream).pipeTo(writeStream);
+				}
 
 				console.log(`wrote database to ${path}`);
 				return snapshotFile;
@@ -167,10 +167,6 @@ export class Store {
 		this.db.close();
 	}
 
-	public get(id: number): { x: number; y: number; mass: number; color: number } {
-		return { ...this.locate(id), ...this.#getNode(id) };
-	}
-
 	public locate(id: number): { x: number; y: number } {
 		try {
 			this.selectUser.bind({ $id: id });
@@ -212,10 +208,10 @@ export class Store {
 	}
 
 	public query(x: number, y: number, scale: number): { id: number; x: number; y: number } | null {
-		const displayRadius = getDisplayRadius(scale);
+		const r = getRadius(scale);
 
 		let target: { id: number; x: number; y: number; dist: number } | null = null;
-		this.queryArea.bind({ $x: x, $y: y, $r: displayRadius });
+		this.queryArea.bind({ $x: x, $y: y, $r: r });
 		try {
 			while (this.queryArea.step()) {
 				const id = this.queryArea.getInt(0)!;
@@ -231,8 +227,6 @@ export class Store {
 			}
 
 			if (target !== null) {
-				const { mass, color: label } = this.#getNode(target.id);
-				console.log({ id: target.id, mass, label, x: target.x, y: target.y });
 				return { id: target.id, x: target.x, y: target.y };
 			}
 

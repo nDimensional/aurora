@@ -5,13 +5,11 @@ struct Params {
     offset_y: f32,
     scale: f32,
     radius: f32,
-    scale_radius: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
-@group(0) @binding(2) var<storage, read> z: array<f32>;
-@group(0) @binding(3) var<storage, read> colors: array<u32>;
+@group(0) @binding(2) var<storage, read> colors: array<u32>;
 
 fn grid_space_to_ndc(v: vec2f) -> vec4f {
     let x = v.x * params.scale * 2 / params.width;
@@ -50,8 +48,8 @@ fn vert_node(
     return vsOut;
 }
 
-fn unpack_rgba8unorm(packed: u32) -> vec4<f32> {
-    return vec4<f32>(
+fn unpack_rgba8unorm(packed: u32) -> vec4f {
+    return vec4f(
         f32(packed & 0xFF) / 255.0,
         f32((packed >> 8) & 0xFF) / 255.0,
         f32((packed >> 16) & 0xFF) / 255.0,
@@ -72,5 +70,4 @@ fn frag_node(
     let alpha = 1.0 - smoothstep(radius - edgeWidth, radius, dist);
 
     return vec4f(color.xyz, alpha);
-    // return vec4f(0.1, 0.1, 0.1, alpha);
 }

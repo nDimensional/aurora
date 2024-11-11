@@ -5,7 +5,6 @@ struct Params {
     offset_y: f32,
     scale: f32,
     radius: f32,
-    scale_radius: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -14,8 +13,8 @@ const avatar_dimensions = vec2f(128, 128);
 const texture_dimensions = vec2f(8192, 8192);
 const row_count = 64;
 
-@group(1) @binding(0) var ourSampler: sampler;
-@group(1) @binding(1) var ourTexture: texture_2d<f32>;
+@group(1) @binding(0) var avatar_sampler: sampler;
+@group(1) @binding(1) var avatar_texture: texture_2d<f32>;
 @group(1) @binding(2) var<storage> avatars_x: array<f32>;
 @group(1) @binding(3) var<storage> avatars_y: array<f32>;
 @group(1) @binding(4) var<storage> tiles: array<u32>;
@@ -75,7 +74,7 @@ fn frag_node(
     let p = (pixel.xy - origin) / (2 * r);
 
     let offset = vec2f(f32(tile % row_count), f32(tile / row_count));
-    let s = textureSample(ourTexture, ourSampler, (offset + p) * avatar_dimensions / texture_dimensions);
+    let s = textureSample(avatar_texture, avatar_sampler, (offset + p) * avatar_dimensions / texture_dimensions);
     let dist = distance(pixel.xy, center);
     let alpha = 1.0 - smoothstep(radius - edgeWidth, radius, dist);
     return vec4f(s.rgb, s.a * alpha);

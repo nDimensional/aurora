@@ -31,7 +31,7 @@ export function getScale(zoom: number) {
 }
 
 export const MIN_ZOOM = Math.sqrt(F * (F - G)) - 1;
-export const MAX_ZOOM = 9600;
+export const MAX_ZOOM = 14400;
 
 // const A = 16;
 // const B = 1;
@@ -46,18 +46,12 @@ export const minRadius = 64;
 export const P = 6;
 
 export function getRadius(scale: number) {
-	return minRadius / Math.pow(scale, 1 / 3);
-}
-
-export function getDisplayRadius(scale: number) {
-	return getRadius(scale) * scale;
+	return minRadius / Math.pow(scale, 1 / 2.5);
 }
 
 const hsluv = new Hsluv();
 
-export const S = 60;
-export const L = 10;
-export const convert = (h: number, s = S, l = L) => {
+export const convert = (h: number, s: number, l: number) => {
 	hsluv.hsluv_h = h;
 	hsluv.hsluv_s = s;
 	hsluv.hsluv_l = l;

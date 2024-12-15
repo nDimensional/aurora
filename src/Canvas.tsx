@@ -242,9 +242,11 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 	if (error !== null) {
 		return (
-			<pre id="error">
-				<code>{error.toString()}</code>
-			</pre>
+			<div id="error">
+				<pre>
+					<code>{error.toString()}</code>
+				</pre>
+			</div>
 		);
 	}
 

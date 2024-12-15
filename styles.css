@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 
 html {
+	background-color: #1f3030;
 	height: 100%;
 	line-height: 1.25em;
 
@@ -35,6 +36,10 @@ progress::-webkit-progress-value {
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
+}
+
+#error {
+	margin: 1em;
 }
 
 canvas {

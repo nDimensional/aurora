@@ -33,14 +33,6 @@ export function getScale(zoom: number) {
 export const MIN_ZOOM = Math.sqrt(F * (F - G)) - 1;
 export const MAX_ZOOM = 14400;
 
-// const A = 16;
-// const B = 1;
-// const C = 4;
-// const D = 2;
-
-// export const scaleZ = (z: number) => Math.pow(z / A + 1, 1 / C) / B + D;
-// export const scaleZInv = (z: number) => A * (Math.pow(B * (z - D), C) - 1);
-
 export const minRadius = 64;
 
 export const P = 6;

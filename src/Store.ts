@@ -1,4 +1,4 @@
-import initModule, { Sqlite3Static, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
+import initModule, { Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 
 import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
@@ -16,12 +16,28 @@ export const emptyArea: Area = {
 
 export class Store {
 	public static snapshot = "2024-11-07";
-	public static graphURL = "https://cdn.ndimensional.xyz/2024-11-07/atlas.sqlite.gz";
+	public static graphURL = "https://cdn.ndimensional.xyz/2024-11-07/users.sqlite.gz";
+	public static positionsURL = "https://cdn.ndimensional.xyz/2024-11-07/positions.buffer.gz";
+	public static colorsURL = "https://cdn.ndimensional.xyz/2024-11-07/colors.buffer.gz";
 
 	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
+		const positionsHandle = await Store.getFile(Store.positionsURL, "positions.buffer");
+		const colorsHandle = await Store.getFile(Store.colorsURL, "colors.buffer");
+		const databaseHandle = await Store.getFile(Store.graphURL, "atlas.sqlite", onProgress);
+		const db = await Store.getDatabase(databaseHandle);
+
+		const positionsFile = await positionsHandle.getFile();
+		const positionsBuffer = await positionsFile.arrayBuffer();
+
+		const colorsFile = await colorsHandle.getFile();
+		const colorsBuffer = await colorsFile.arrayBuffer();
+
+		return new Store(db, positionsBuffer, colorsBuffer);
+	}
+
+	private static async getDatabase(fileHandle: FileSystemFileHandle): Promise<Database> {
 		const sqlite3 = await initModule();
 
-		const fileHandle = await Store.getSnapshot(onProgress);
 		const file = await fileHandle.getFile();
 		const arrayBuffer = await file.arrayBuffer();
 		const array = new Uint8Array(arrayBuffer);
@@ -52,54 +68,67 @@ export class Store {
 
 		db.checkRc(rc);
 
-		return new Store(sqlite3, db);
+		return db;
 	}
 
-	private static async getSnapshot(onProgress?: (count: number, total: number) => void): Promise<FileSystemFileHandle> {
-		const filename = "atlas.sqlite";
+	private static async getFile(
+		url: string,
+		filename: string,
+		onProgress?: (count: number, total: number) => void,
+	): Promise<FileSystemFileHandle> {
 		const path = `${Store.snapshot}/${filename}`;
 
 		const rootDirectory = await navigator.storage.getDirectory();
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
-			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
-			console.log(`found existing database at ${path}`);
+			const snapshotFile = await snapshotDirectory.getFileHandle(filename, {
+				create: false,
+			});
+			console.log(`found existing file at ${path}`);
 			return snapshotFile;
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {
-				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
-				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
+				const snapshotFile = await snapshotDirectory.getFileHandle(filename, {
+					create: true,
+				});
+				const writeStream = await snapshotFile.createWritable({
+					keepExistingData: false,
+				});
 
-				// const graphURL = `${Store.hostURL}/${Store.databaseKey}`;
-				console.log(`fetching ${Store.graphURL}`);
+				console.log(`fetching ${url} > ${path}`);
 
-				const res = await fetch(Store.graphURL);
+				const res = await fetch(url);
 				assert(res.ok && res.body !== null);
 
 				// Get the total size if available
 				const contentLength = res.headers.get("Content-Length");
 				const total = contentLength ? parseInt(contentLength, 10) : null;
 
-				const progressStream = new TransformStream({
-					transform(chunk, controller) {
-						controller.enqueue(chunk);
-						if (total !== null) {
-							loaded += chunk.length;
-							onProgress?.(loaded, total);
-						}
-					},
-				});
+				const transforms: GenericTransformStream[] = [];
 
-				let loaded = 0;
+				if (onProgress !== undefined) {
+					let loaded = 0;
+					const progressTransform = new TransformStream({
+						transform(chunk, controller) {
+							controller.enqueue(chunk);
+							if (total !== null) {
+								loaded += chunk.length;
+								onProgress?.(loaded, total);
+							}
+						},
+					});
 
-				if (res.headers.get("Content-Type") === "application/x-gzip") {
-					const decompress = new DecompressionStream("gzip");
-					await res.body.pipeThrough(progressStream).pipeThrough(decompress).pipeTo(writeStream);
-				} else {
-					await res.body.pipeThrough(progressStream).pipeTo(writeStream);
+					transforms.push(progressTransform);
 				}
 
-				console.log(`wrote database to ${path}`);
+				if (res.headers.get("Content-Type") === "application/x-gzip") {
+					const decompressTransform = new DecompressionStream("gzip");
+					transforms.push(decompressTransform);
+				}
+
+				await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
+
+				console.log(`wrote file to ${path}`);
 				return snapshotFile;
 			} else {
 				throw err;
@@ -107,18 +136,17 @@ export class Store {
 		}
 	}
 
-	public nodeCount: number;
-	public maxMass: number = 0;
+	public readonly nodeCount: number;
 
-	private selectAll: PreparedStatement;
 	private selectUser: PreparedStatement;
-	private selectNode: PreparedStatement;
+
 	private selectArea: PreparedStatement;
 	private queryArea: PreparedStatement;
 
 	private constructor(
-		readonly sqlite3: Sqlite3Static,
 		readonly db: Database,
+		public readonly positionsBuffer: ArrayBuffer,
+		public readonly colorsBuffer: ArrayBuffer,
 	) {
 		console.log("Initialized Store");
 
@@ -129,19 +157,6 @@ export class Store {
 			selectCount.finalize();
 		}
 
-		{
-			const getMaxMass = db.prepare("SELECT max(mass) FROM nodes");
-			assert(getMaxMass.step());
-			this.maxMass = getMaxMass.getInt(0) ?? 0;
-			getMaxMass.finalize();
-		}
-
-		this.selectAll = db.prepare(`
-		  SELECT nodes.id, nodes.mass, nodes.color, users.minX, users.minY
-			FROM users JOIN nodes ON users.id = nodes.id LIMIT $limit
-		`);
-
-		this.selectNode = db.prepare("SELECT nodes.mass, nodes.color FROM nodes WHERE id = $id");
 		this.selectUser = db.prepare("SELECT users.minX, users.minY FROM users WHERE id = $id");
 		this.selectArea = db.prepare(`
   		SELECT id, minX, minY
@@ -160,7 +175,6 @@ export class Store {
 	}
 
 	public close() {
-		this.selectAll.finalize();
 		this.selectUser.finalize();
 		this.selectArea.finalize();
 		this.queryArea.finalize();
@@ -176,34 +190,6 @@ export class Store {
 			return { x, y };
 		} finally {
 			this.selectUser.reset();
-		}
-	}
-
-	#getNode(id: number): { mass: number; color: number } {
-		try {
-			this.selectNode.bind({ $id: id });
-			assert(this.selectNode.step(), "node not found");
-			const mass = this.selectNode.getInt(0)!;
-			const color = this.selectNode.getInt(1)!;
-			return { mass, color };
-		} finally {
-			this.selectNode.reset();
-		}
-	}
-
-	public *nodes(): Generator<{ id: number; mass: number; color: number; x: number; y: number }> {
-		try {
-			this.selectAll.bind({ $limit: this.nodeCount });
-			while (this.selectAll.step()) {
-				const id = this.selectAll.getInt(0)!;
-				const mass = this.selectAll.getInt(1)!;
-				const color = this.selectAll.getInt(2)!;
-				const x = this.selectAll.getFloat(3)!;
-				const y = this.selectAll.getFloat(4)!;
-				yield { id, x, y, color, mass };
-			}
-		} finally {
-			this.selectAll.reset();
 		}
 	}
 

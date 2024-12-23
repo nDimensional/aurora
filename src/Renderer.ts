@@ -2,16 +2,7 @@ import nodeShader from "../shaders/node.wgsl?raw";
 import avatarShader from "../shaders/avatar.wgsl?raw";
 
 import { Cache } from "./Cache.js";
-import {
-	AVATAR_DIMENSIONS,
-	COL_COUNT,
-	ROW_COUNT,
-	TEXTURE_DIMENSIONS,
-	assert,
-	minRadius,
-	convert,
-	getRadius,
-} from "./utils.js";
+import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS, assert, convert, getRadius } from "./utils.js";
 import { Store, Area } from "./Store.js";
 
 export class Renderer {
@@ -59,8 +50,8 @@ export class Renderer {
 	colorBuffer: GPUBuffer;
 	colorBufferSize: number;
 
-	nodeBuffer: GPUBuffer;
-	nodeBufferSize: number;
+	positionBuffer: GPUBuffer;
+	positionBufferSize: number;
 
 	avatarXBuffer: GPUBuffer;
 	avatarYBuffer: GPUBuffer;
@@ -123,11 +114,11 @@ export class Renderer {
 		});
 
 		// initialize node buffer
-		this.nodeBufferSize = store.nodeCount * 2 * 4;
-		this.nodeBuffer = this.device.createBuffer({
-			label: "nodeBuffer",
+		this.positionBufferSize = store.nodeCount * 2 * 4;
+		this.positionBuffer = this.device.createBuffer({
+			label: "positionBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-			size: this.nodeBufferSize,
+			size: this.positionBufferSize,
 			mappedAtCreation: true,
 		});
 
@@ -183,7 +174,7 @@ export class Renderer {
 			layout: nodeBindGroupLayout,
 			entries: [
 				{ binding: 0, resource: { buffer: this.paramBuffer } },
-				{ binding: 1, resource: { buffer: this.nodeBuffer } },
+				{ binding: 1, resource: { buffer: this.positionBuffer } },
 				{ binding: 2, resource: { buffer: this.colorBuffer } },
 			],
 		});
@@ -312,32 +303,14 @@ export class Renderer {
 
 	private async load(onProgress?: (count: number, total: number) => void) {
 		const colorMap = this.colorBuffer.getMappedRange(0, this.colorBufferSize);
-		const colorArray = new Uint8Array(colorMap, 0, this.store.nodeCount * 4);
+		assert(colorMap.byteLength === this.store.colorsBuffer.byteLength);
+		new Uint8Array(colorMap).set(new Uint8Array(this.store.colorsBuffer));
 
-		const nodeMap = this.nodeBuffer.getMappedRange(0, this.nodeBufferSize);
-		const nodeArray = new Float32Array(nodeMap, 0, this.store.nodeCount * 2);
-		let n = 0;
+		const positionMap = this.positionBuffer.getMappedRange(0, this.positionBufferSize);
+		assert(positionMap.byteLength === this.store.positionsBuffer.byteLength);
+		new Uint8Array(positionMap).set(new Uint8Array(this.store.positionsBuffer));
 
-		for (const { x, y, mass, color: label } of this.store.nodes()) {
-			const i = n++;
-			nodeArray[2 * i] = x;
-			nodeArray[2 * i + 1] = y;
-
-			const S = 85;
-			const [r, g, b] = convert(360 * (label / 256), S, 100 * (mass / 256));
-
-			colorArray[4 * i] = Math.floor(r * 256);
-			colorArray[4 * i + 1] = Math.floor(g * 256);
-			colorArray[4 * i + 2] = Math.floor(b * 256);
-			colorArray[4 * i + 3] = 1.0;
-
-			if (n % 10000 === 0) {
-				onProgress?.(n, this.store.nodeCount);
-				await new Promise((resolve) => requestIdleCallback(resolve, { timeout: 50 }));
-			}
-		}
-
-		this.nodeBuffer.unmap();
+		this.positionBuffer.unmap();
 		this.colorBuffer.unmap();
 	}
 

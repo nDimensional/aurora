@@ -8,7 +8,7 @@ struct Params {
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> nodes: array<vec2f>;
+@group(0) @binding(1) var<storage, read> positions: array<vec2f>;
 @group(0) @binding(2) var<storage, read> colors: array<u32>;
 
 fn grid_space_to_ndc(v: vec2f) -> vec4f {
@@ -38,7 +38,7 @@ fn vert_node(
     var vsOut: VSOutput;
 
     let r = params.radius;
-    let c = nodes[i] + vec2f(params.offset_x, params.offset_y);
+    let c = positions[i] + vec2f(params.offset_x, params.offset_y);
     vsOut.vertex = grid_space_to_ndc(v * r + c);
     vsOut.center = grid_space_to_clip_space(c);
     vsOut.radius = r * params.scale;

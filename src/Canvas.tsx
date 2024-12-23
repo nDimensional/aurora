@@ -107,10 +107,40 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 		setStatus(null);
 	}, []);
 
+	const handleWheel = useCallback((event: WheelEvent) => {
+		event.preventDefault();
+
+		// console.log("wheel event", event);
+		const delta = event.ctrlKey ? event.deltaY * 10 : event.deltaY;
+		let zoom = zoomRef.current + delta;
+		zoom = Math.max(zoom, MIN_ZOOM);
+		zoom = Math.min(zoom, MAX_ZOOM);
+		if (zoom !== zoomRef.current && rendererRef.current !== null) {
+			setTarget(null);
+			const oldScale = getScale(zoomRef.current);
+			const newScale = getScale(zoom);
+			zoomRef.current = zoom;
+			rendererRef.current.setScale(newScale);
+
+			const px = event.clientX - widthRef.current / 2;
+			const py = heightRef.current / 2 - event.clientY;
+			const oldX = px / oldScale;
+			const oldY = py / oldScale;
+			const newX = px / newScale;
+			const newY = py / newScale;
+			offsetXRef.current += devicePixelRatio * (newX - oldX);
+			offsetYRef.current += devicePixelRatio * (newY - oldY);
+			rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
+			refresh();
+		}
+	}, []);
+
 	useEffect(() => {
 		if (canvasRef.current === null || containerRef.current === null) {
 			return;
 		}
+
+		canvasRef.current.addEventListener("wheel", handleWheel, { passive: false });
 
 		const w = containerRef.current.clientWidth;
 		const h = containerRef.current.clientHeight;
@@ -194,35 +224,12 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
 			const target = storeRef.current.query(x, y, scale);
+			console.log(x, y, target);
 			setTarget(target);
 		}
 
 		isDraggingRef.current = null;
 		setIsDragging(false);
-	}, []);
-
-	const handleWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
-		let zoom = zoomRef.current + event.deltaY;
-		zoom = Math.max(zoom, MIN_ZOOM);
-		zoom = Math.min(zoom, MAX_ZOOM);
-		if (zoom !== zoomRef.current && rendererRef.current !== null) {
-			setTarget(null);
-			const oldScale = getScale(zoomRef.current);
-			const newScale = getScale(zoom);
-			zoomRef.current = zoom;
-			rendererRef.current.setScale(newScale);
-
-			const px = event.clientX - widthRef.current / 2;
-			const py = heightRef.current / 2 - event.clientY;
-			const oldX = px / oldScale;
-			const oldY = py / oldScale;
-			const newX = px / newScale;
-			const newY = py / newScale;
-			offsetXRef.current += devicePixelRatio * (newX - oldX);
-			offsetYRef.current += devicePixelRatio * (newY - oldY);
-			rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
-			refresh();
-		}
 	}, []);
 
 	const handleLocate = useCallback(({ id }: Profile) => {
@@ -279,7 +286,6 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 					onMouseLeave={handleMouseLeave}
 					onMouseDown={handleMouseDown}
 					onMouseUp={handleMouseUp}
-					onWheel={handleWheel}
 				></canvas>
 			</div>
 		</>

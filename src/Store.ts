@@ -20,6 +20,11 @@ export class Store {
 	public static positionsURL = "https://cdn.ndimensional.xyz/2024-11-07/positions.buffer.gz";
 	public static colorsURL = "https://cdn.ndimensional.xyz/2024-11-07/colors.buffer.gz";
 
+	// public static snapshot = "2024-11-07-filtered";
+	// public static graphURL = "/filtered/positions.sqlite.gz";
+	// public static positionsURL = "/filtered/positions.buffer.gz";
+	// public static colorsURL = "/filtered/colors.buffer.gz";
+
 	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
 		const positionsHandle = await Store.getFile(Store.positionsURL, "positions.buffer");
 		const colorsHandle = await Store.getFile(Store.colorsURL, "colors.buffer");
@@ -27,9 +32,11 @@ export class Store {
 		const db = await Store.getDatabase(databaseHandle);
 
 		const positionsFile = await positionsHandle.getFile();
+		console.log("positionsFile.size", positionsFile.size);
 		const positionsBuffer = await positionsFile.arrayBuffer();
 
 		const colorsFile = await colorsHandle.getFile();
+		console.log("colorsFile.size", colorsFile.size);
 		const colorsBuffer = await colorsFile.arrayBuffer();
 
 		return new Store(db, positionsBuffer, colorsBuffer);
@@ -50,11 +57,9 @@ export class Store {
 		 * > database P to 0x01 prior to invoking sqlite3_deserialize(D,S,P,N,M,F) to force the
 		 * > database file into rollback mode and work around this limitation.
 		 */
-		// const array = new Uint8Array(arrayBuffer);
 		array[18] = 0x01;
 		array[19] = 0x01;
 
-		// assuming arrayBuffer contains the result of the above operation...
 		const p = sqlite3.wasm.allocFromTypedArray(array);
 		const db = new sqlite3.oo1.DB();
 		const rc = sqlite3.capi.sqlite3_deserialize(
@@ -81,19 +86,13 @@ export class Store {
 		const rootDirectory = await navigator.storage.getDirectory();
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
-			const snapshotFile = await snapshotDirectory.getFileHandle(filename, {
-				create: false,
-			});
+			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
 			console.log(`found existing file at ${path}`);
 			return snapshotFile;
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {
-				const snapshotFile = await snapshotDirectory.getFileHandle(filename, {
-					create: true,
-				});
-				const writeStream = await snapshotFile.createWritable({
-					keepExistingData: false,
-				});
+				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
+				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
 
 				console.log(`fetching ${url} > ${path}`);
 
@@ -156,6 +155,8 @@ export class Store {
 			this.nodeCount = selectCount.getInt(0) ?? 0;
 			selectCount.finalize();
 		}
+
+		console.log("store.nodeCount", this.nodeCount);
 
 		this.selectUser = db.prepare("SELECT users.minX, users.minY FROM users WHERE id = $id");
 		this.selectArea = db.prepare(`

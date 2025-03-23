@@ -8,8 +8,9 @@ export type Profile = {
 	description: string | null;
 };
 
-export function assert(condition: boolean, message?: string): asserts condition {
+export function assert(condition: boolean, message?: string, props?: any): asserts condition {
 	if (!condition) {
+		console.error(message, props);
 		throw new Error(message ?? "assert failed");
 	}
 }

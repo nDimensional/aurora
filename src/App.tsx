@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import { Canvas } from "./Canvas.js";
 import { Landing } from "./Landing.js";
+import { Feed } from "./Feed.js";
 
 export const App: React.FC<{}> = ({}) => {
 	const [hash, setHash] = useState(window.location.hash.slice(1));
@@ -20,6 +21,11 @@ export const App: React.FC<{}> = ({}) => {
 		return <Landing />;
 	} else {
 		const [x, y, zoom] = hash.split(",").map((f) => parseInt(f));
-		return <Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} />;
+		return (
+			<>
+				{/* <Feed /> */}
+				<Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} />
+			</>
+		);
 	}
 };

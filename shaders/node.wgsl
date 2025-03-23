@@ -5,6 +5,7 @@ struct Params {
     offset_y: f32,
     scale: f32,
     radius: f32,
+    divisor: u32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -28,22 +29,29 @@ struct VSOutput {
     @location(0) center: vec2f,
     @location(1) radius: f32,
     @location(2) color: vec4f,
+    @location(3) @interpolate(flat) in_view: u32,
 }
 
 @vertex
 fn vert_node(
-    @builtin(instance_index) i: u32,
+    @builtin(instance_index) m: u32,
     @location(0) v: vec2f,
 ) -> VSOutput {
+    let i = m * params.divisor;
     var vsOut: VSOutput;
 
+    let offset = vec2f(params.offset_x, params.offset_y);
+
     let r = params.radius;
-    let c = positions[i] + vec2f(params.offset_x, params.offset_y);
+    let c = positions[i] + offset;
     vsOut.vertex = grid_space_to_ndc(v * r + c);
     vsOut.center = grid_space_to_clip_space(c);
     vsOut.radius = r * params.scale;
 
     vsOut.color = unpack_rgba8unorm(colors[i]);
+
+    let p = grid_space_to_ndc(c).xy;
+    vsOut.in_view = u32(abs(p.x) <= 1.0 && abs(p.y) <= 1.0);
 
     return vsOut;
 }
@@ -65,7 +73,12 @@ fn frag_node(
     @location(0) center: vec2f,
     @location(1) radius: f32,
     @location(2) color: vec4f,
+    @location(3) @interpolate(flat) in_view: u32,
 ) -> @location(0) vec4f {
+    if (!bool(in_view)) {
+        discard;
+    }
+
     let dist = distance(pixel.xy, center);
     let alpha = 1.0 - smoothstep(radius - edgeWidth, radius, dist);
 

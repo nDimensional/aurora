@@ -76,6 +76,8 @@ export class Renderer {
 		0, // 5: radius
 	]);
 
+	readonly divisor = new Uint32Array([1]);
+
 	constructor(
 		readonly store: Store,
 		readonly cache: Cache,
@@ -84,7 +86,7 @@ export class Renderer {
 		readonly presentationFormat: GPUTextureFormat,
 	) {
 		// initialize param buffer
-		const paramBufferSize = this.params.length * 4;
+		const paramBufferSize = this.params.length * 4 + 4;
 		this.paramBuffer = device.createBuffer({
 			label: "paramBuffer",
 			usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -115,6 +117,7 @@ export class Renderer {
 
 		// initialize node buffer
 		this.positionBufferSize = store.nodeCount * 2 * 4;
+		console.log("store.positionBufferSize:", this.positionBufferSize);
 		this.positionBuffer = this.device.createBuffer({
 			label: "positionBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -123,6 +126,7 @@ export class Renderer {
 		});
 
 		this.colorBufferSize = store.nodeCount * 4;
+		console.log("store.colorBufferSize:", this.colorBufferSize);
 		this.colorBuffer = this.device.createBuffer({
 			label: "colorBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -303,13 +307,24 @@ export class Renderer {
 
 	private async load(onProgress?: (count: number, total: number) => void) {
 		const colorMap = this.colorBuffer.getMappedRange(0, this.colorBufferSize);
-		assert(colorMap.byteLength === this.store.colorsBuffer.byteLength);
+		assert(
+			colorMap.byteLength === this.store.colorsBuffer.byteLength,
+			"expected colorMap.byteLength === this.store.colorsBuffer.byteLength",
+			{
+				expected: this.store.colorsBuffer.byteLength,
+				actual: colorMap.byteLength,
+				colorBufferSize: this.colorBufferSize,
+			},
+		);
 		new Uint8Array(colorMap).set(new Uint8Array(this.store.colorsBuffer));
 
 		const positionMap = this.positionBuffer.getMappedRange(0, this.positionBufferSize);
-		assert(positionMap.byteLength === this.store.positionsBuffer.byteLength);
-		new Uint8Array(positionMap).set(new Uint8Array(this.store.positionsBuffer));
+		assert(
+			positionMap.byteLength === this.store.positionsBuffer.byteLength,
+			"expected positionMap.byteLength === this.store.positionsBuffer.byteLength",
+		);
 
+		new Uint8Array(positionMap).set(new Uint8Array(this.store.positionsBuffer));
 		this.positionBuffer.unmap();
 		this.colorBuffer.unmap();
 	}
@@ -459,10 +474,25 @@ export class Renderer {
 	public setScale(scale: number) {
 		this.params[4] = scale;
 		this.params[5] = getRadius(scale);
+
+		if (scale < 1) {
+			const log2 = Math.log2(scale);
+			const a = Math.round(Math.sqrt(Math.log2(-log2 + 1)));
+			if (-log2 < 6.5) {
+				this.divisor[0] = 1;
+			} else if (-log2 < 8.5) {
+				this.divisor[0] = 2;
+			} else {
+				this.divisor[0] = 4;
+			}
+		} else {
+			this.divisor[0] = 1;
+		}
 	}
 
 	public render() {
 		this.device.queue.writeBuffer(this.paramBuffer, 0, this.params);
+		this.device.queue.writeBuffer(this.paramBuffer, this.params.byteLength, this.divisor);
 
 		const commandEncoder = this.device.createCommandEncoder();
 		const textureView = this.context.getCurrentTexture().createView();
@@ -489,7 +519,7 @@ export class Renderer {
 		passEncoder.setBindGroup(0, this.nodeBindGroup);
 		passEncoder.setVertexBuffer(0, this.vertexBuffer);
 		passEncoder.setIndexBuffer(this.indexBuffer, "uint16");
-		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, this.store.nodeCount);
+		passEncoder.drawIndexed(Renderer.squareIndexBufferData.length, Math.floor(this.store.nodeCount / this.divisor[0]));
 	}
 
 	private renderAvatars(passEncoder: GPURenderPassEncoder) {

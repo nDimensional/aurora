@@ -149,10 +149,14 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 		setHeight(h);
 		heightRef.current = h;
 
-		init(canvasRef.current, w, h).catch((err) => setError(err));
+		init(canvasRef.current, w, h).catch((err) => setError(err + "\n" + err.stack));
 
 		new ResizeObserver((entries) => {
 			const entry = entries.find((entry) => entry.target === containerRef.current);
+			if (entry === undefined) {
+				return;
+			}
+
 			assert(entry !== undefined);
 
 			const { width, height } = entry.contentRect;
@@ -237,14 +241,18 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			return;
 		}
 
-		const { x, y } = storeRef.current.locate(id);
-		offsetXRef.current = -x;
-		offsetYRef.current = -y;
-		rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
-		zoomRef.current = MIN_ZOOM;
-		rendererRef.current.setScale(getScale(zoomRef.current));
-		refresh();
-		setTarget({ id, x, y });
+		try {
+			const { x, y } = storeRef.current.locate(id);
+			offsetXRef.current = -x;
+			offsetYRef.current = -y;
+			rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
+			zoomRef.current = MIN_ZOOM;
+			rendererRef.current.setScale(getScale(zoomRef.current));
+			refresh();
+			setTarget({ id, x, y });
+		} catch (err) {
+			alert("user not found");
+		}
 	}, []);
 
 	if (error !== null) {

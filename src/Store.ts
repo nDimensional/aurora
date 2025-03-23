@@ -1,5 +1,3 @@
-import initModule, { Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
-
 import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export type Area = {
@@ -15,65 +13,36 @@ export const emptyArea: Area = {
 };
 
 export class Store {
-	public static snapshot = "2024-11-07";
-	public static graphURL = "https://cdn.ndimensional.xyz/2024-11-07/users.sqlite.gz";
-	public static positionsURL = "https://cdn.ndimensional.xyz/2024-11-07/positions.buffer.gz";
-	public static colorsURL = "https://cdn.ndimensional.xyz/2024-11-07/colors.buffer.gz";
+	public static snapshot = "2025-02-21-1e5";
+	public static xURL = "http://localhost:3000/1e5/positions_x.buffer";
+	public static yURL = "http://localhost:3000/1e5/positions_y.buffer";
+	public static colorsURL = "http://localhost:3000/1e5/colors.buffer";
 
-	// public static snapshot = "2024-11-07-filtered";
-	// public static graphURL = "/filtered/positions.sqlite.gz";
-	// public static positionsURL = "/filtered/positions.buffer.gz";
-	// public static colorsURL = "/filtered/colors.buffer.gz";
+	// public static snapshot = "2025-02-21";
+	// public static xURL = "http://slacker:3001/2025-02-21/positions_x.buffer";
+	// public static yURL = "http://slacker:3001/2025-02-21/positions_y.buffer";
+	// public static colorsURL = "http://slacker:3001/2025-02-21/colors.buffer";
+
+	// public static snapshot = "2025-03-12-1e3";
+	// public static xURL = "http://localhost:3000/1e3/positions_x.buffer";
+	// public static yURL = "http://localhost:3000/1e3/positions_y.buffer";
+	// public static colorsURL = "http://localhost:3000/1e3/colors.buffer";
 
 	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
-		const positionsHandle = await Store.getFile(Store.positionsURL, "positions.buffer");
+		const xHandle = await Store.getFile(Store.xURL, "positions_x.buffer");
+		const yHandle = await Store.getFile(Store.yURL, "positions_y.buffer");
 		const colorsHandle = await Store.getFile(Store.colorsURL, "colors.buffer");
-		const databaseHandle = await Store.getFile(Store.graphURL, "atlas.sqlite", onProgress);
-		const db = await Store.getDatabase(databaseHandle);
 
-		const positionsFile = await positionsHandle.getFile();
-		console.log("positionsFile.size", positionsFile.size);
-		const positionsBuffer = await positionsFile.arrayBuffer();
+		const xFile = await xHandle.getFile();
+		const yFile = await yHandle.getFile();
+
+		const xBuffer = await xFile.arrayBuffer();
+		const yBuffer = await yFile.arrayBuffer();
 
 		const colorsFile = await colorsHandle.getFile();
-		console.log("colorsFile.size", colorsFile.size);
 		const colorsBuffer = await colorsFile.arrayBuffer();
 
-		return new Store(db, positionsBuffer, colorsBuffer);
-	}
-
-	private static async getDatabase(fileHandle: FileSystemFileHandle): Promise<Database> {
-		const sqlite3 = await initModule();
-
-		const file = await fileHandle.getFile();
-		const arrayBuffer = await file.arrayBuffer();
-		const array = new Uint8Array(arrayBuffer);
-
-		/**
-		 * From https://www.sqlite.org/c3ref/deserialize.html:
-		 * > The deserialized database should not be in WAL mode. If the database is in WAL mode,
-		 * > then any attempt to use the database file will result in an SQLITE_CANTOPEN error.
-		 * > The application can set the file format version numbers (bytes 18 and 19) of the input
-		 * > database P to 0x01 prior to invoking sqlite3_deserialize(D,S,P,N,M,F) to force the
-		 * > database file into rollback mode and work around this limitation.
-		 */
-		array[18] = 0x01;
-		array[19] = 0x01;
-
-		const p = sqlite3.wasm.allocFromTypedArray(array);
-		const db = new sqlite3.oo1.DB();
-		const rc = sqlite3.capi.sqlite3_deserialize(
-			db.pointer!,
-			"main",
-			p,
-			array.length,
-			array.length,
-			sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE | sqlite3.capi.SQLITE_DESERIALIZE_READONLY,
-		);
-
-		db.checkRc(rc);
-
-		return db;
+		return new Store(xBuffer, yBuffer, colorsBuffer);
 	}
 
 	private static async getFile(
@@ -92,179 +61,123 @@ export class Store {
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {
 				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
-				const writeStream = await snapshotFile.createWritable({ keepExistingData: false });
-
-				console.log(`fetching ${url} > ${path}`);
-
-				const res = await fetch(url);
-				assert(res.ok && res.body !== null);
-
-				// Get the total size if available
-				const contentLength = res.headers.get("Content-Length");
-				const total = contentLength ? parseInt(contentLength, 10) : null;
-
-				const transforms: GenericTransformStream[] = [];
-
-				if (onProgress !== undefined) {
-					let loaded = 0;
-					const progressTransform = new TransformStream({
-						transform(chunk, controller) {
-							controller.enqueue(chunk);
-							if (total !== null) {
-								loaded += chunk.length;
-								onProgress?.(loaded, total);
-							}
-						},
-					});
-
-					transforms.push(progressTransform);
+				if (snapshotFile.createWritable === undefined) {
+					throw new Error(
+						"FileSystemFileHandle.createWritable not implemented - your browser doesn't support the entire OPFS API :(",
+					);
 				}
 
-				if (res.headers.get("Content-Type") === "application/x-gzip") {
-					const decompressTransform = new DecompressionStream("gzip");
-					transforms.push(decompressTransform);
+				try {
+					console.log(`fetching ${url} > ${path}`);
+					await Store.fetch(url, snapshotFile, onProgress);
+					console.log(`wrote file to ${path}`);
+					return snapshotFile;
+				} catch (err) {
+					await snapshotDirectory.removeEntry(filename);
+					throw err;
 				}
-
-				await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
-
-				console.log(`wrote file to ${path}`);
-				return snapshotFile;
 			} else {
 				throw err;
 			}
 		}
 	}
 
+	private static async fetch(
+		url: string,
+		file: FileSystemFileHandle,
+		onProgress?: (count: number, total: number) => void,
+	) {
+		const writeStream = await file.createWritable({ keepExistingData: false });
+
+		const res = await fetch(url);
+		assert(res.ok && res.body !== null, "Failed to fetch file from CDN");
+
+		// Get the total size if available
+		const contentLength = res.headers.get("Content-Length");
+		const total = contentLength ? parseInt(contentLength, 10) : null;
+
+		const transforms: GenericTransformStream[] = [];
+
+		if (onProgress !== undefined) {
+			let loaded = 0;
+			const progressTransform = new TransformStream({
+				transform(chunk, controller) {
+					controller.enqueue(chunk);
+					if (total !== null) {
+						loaded += chunk.length;
+						onProgress?.(loaded, total);
+					}
+				},
+			});
+
+			transforms.push(progressTransform);
+		}
+
+		if (res.headers.get("Content-Type") === "application/x-gzip") {
+			const decompressTransform = new DecompressionStream("gzip");
+			transforms.push(decompressTransform);
+		}
+
+		await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
+	}
+
 	public readonly nodeCount: number;
 
-	private selectUser: PreparedStatement;
-
-	private selectArea: PreparedStatement;
-	private queryArea: PreparedStatement;
-
 	private constructor(
-		readonly db: Database,
-		public readonly positionsBuffer: ArrayBuffer,
+		public readonly xBuffer: ArrayBuffer,
+		public readonly yBuffer: ArrayBuffer,
 		public readonly colorsBuffer: ArrayBuffer,
 	) {
 		console.log("Initialized Store");
-
-		{
-			const selectCount = db.prepare("SELECT count(*) FROM users");
-			assert(selectCount.step());
-			this.nodeCount = selectCount.getInt(0) ?? 0;
-			selectCount.finalize();
-		}
-
-		console.log("store.nodeCount", this.nodeCount);
-
-		this.selectUser = db.prepare("SELECT users.minX, users.minY FROM users WHERE id = $id");
-		this.selectArea = db.prepare(`
-  		SELECT id, minX, minY
-      FROM users
-      WHERE (($minX <= minX AND maxX <= $maxX)
-        AND ($minY <= minY AND maxY <= $maxY))
-      LIMIT $limit
-		`);
-
-		this.queryArea = db.prepare(`
-  		SELECT id, minX, minY
-  		FROM users
-  		WHERE ((($x - $r) <= minX AND maxX <= ($x + $r))
-  		  AND (($y - $r) <= minY AND maxY <= ($y + $r)))
-		`);
+		assert(xBuffer.byteLength === colorsBuffer.byteLength);
+		assert(yBuffer.byteLength === colorsBuffer.byteLength);
+		this.nodeCount = colorsBuffer.byteLength / 4;
 	}
 
-	public close() {
-		this.selectUser.finalize();
-		this.selectArea.finalize();
-		this.queryArea.finalize();
-		this.db.close();
-	}
+	public close() {}
 
 	public locate(id: number): { x: number; y: number } {
-		try {
-			this.selectUser.bind({ $id: id });
-			assert(this.selectUser.step(), "node not found");
-			const x = this.selectUser.getInt(0)!;
-			const y = this.selectUser.getInt(1)!;
-			return { x, y };
-		} finally {
-			this.selectUser.reset();
-		}
+		throw new Error("not implemented");
 	}
 
-	public query(x: number, y: number, scale: number): { id: number; x: number; y: number } | null {
+	public async query(
+		x: number,
+		y: number,
+		scale: number,
+		signal?: AbortSignal,
+	): Promise<{ id: number; x: number; y: number } | null> {
 		const r = getRadius(scale);
+		const query = Object.entries({ x, y, r })
+			.map((entry) => entry.join("="))
+			.join("&");
 
-		let target: { id: number; x: number; y: number; dist: number } | null = null;
-		this.queryArea.bind({ $x: x, $y: y, $r: r });
-		try {
-			while (this.queryArea.step()) {
-				const id = this.queryArea.getInt(0)!;
-				const nodeX = this.queryArea.getFloat(1)!;
-				const nodeY = this.queryArea.getFloat(2)!;
-				const dx = x - nodeX;
-				const dy = y - nodeY;
-				const dist = Math.sqrt(dx * dx + dy * dy);
-
-				if (target === null || dist < target.dist) {
-					target = { id, x: nodeX, y: nodeY, dist };
-				}
-			}
-
-			if (target !== null) {
-				return { id: target.id, x: target.x, y: target.y };
-			}
-
-			return null;
-		} finally {
-			this.queryArea.reset();
-		}
+		const res = await fetch(`http://slacker:3000/api/${Store.snapshot}/radius?${query}`, { signal });
+		const result: { id: number; x: number; y: number } | null = await res.json();
+		return result;
 	}
 
 	public static areaLimit = ROW_COUNT * COL_COUNT - 1;
-	private areaIdArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaXArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaYArrayBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private areaIdArray = new Uint32Array(this.areaIdArrayBuffer);
-	private areaXArray = new Float32Array(this.areaXArrayBuffer);
-	private areaYArray = new Float32Array(this.areaYArrayBuffer);
 
-	public getArea(minX: number, maxX: number, minY: number, maxY: number): Area {
-		this.selectArea.bind({
-			$minX: minX,
-			$maxX: maxX,
-			$minY: minY,
-			$maxY: maxY,
-			$limit: Store.areaLimit,
-		});
+	public async getArea(minX: number, maxX: number, minY: number, maxY: number, signal?: AbortSignal): Promise<Area> {
+		const query = Object.entries({ minX, maxX, minY, maxY })
+			.map((entry) => entry.join("="))
+			.join("&");
 
-		try {
-			const avatars: { id: number; x: number; y: number }[] = [];
-			while (this.selectArea.step()) {
-				avatars.push({
-					id: this.selectArea.getInt(0)!,
-					x: this.selectArea.getFloat(1)!,
-					y: this.selectArea.getFloat(2)!,
-				});
-			}
+		const res = await fetch(`http://slacker:3000/api/${Store.snapshot}/area?${query}`, { signal });
+		const result: [id: number, x: number, y: number][] = await res.json();
 
-			avatars.sort((a, b) => (a.id < b.id ? -1 : 1));
+		const area: Area = {
+			id: new Uint32Array(result.length),
+			x: new Float32Array(result.length),
+			y: new Float32Array(result.length),
+		};
 
-			for (const [i, { id, x, y }] of avatars.entries()) {
-				this.areaIdArray[i] = id;
-				this.areaXArray[i] = x;
-				this.areaYArray[i] = y;
-			}
-
-			return {
-				id: this.areaIdArray.subarray(0, avatars.length),
-				x: this.areaXArray.subarray(0, avatars.length),
-				y: this.areaYArray.subarray(0, avatars.length),
-			};
-		} finally {
-			this.selectArea.reset();
+		for (const [i, [id, x, y]] of result.entries()) {
+			area.id[i] = id;
+			area.x[i] = x;
+			area.y[i] = y;
 		}
+
+		return area;
 	}
 }

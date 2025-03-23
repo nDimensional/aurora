@@ -17,6 +17,8 @@ export class Renderer {
 		const device = await adapter.requestDevice();
 		assert(device !== null);
 
+		(window as any).device = device;
+
 		const context = canvas.getContext("webgpu");
 		assert(context !== null);
 
@@ -50,8 +52,10 @@ export class Renderer {
 	colorBuffer: GPUBuffer;
 	colorBufferSize: number;
 
-	positionBuffer: GPUBuffer;
-	positionBufferSize: number;
+	xBuffer: GPUBuffer;
+	yBuffer: GPUBuffer;
+	xBufferSize: number;
+	yBufferSize: number;
 
 	avatarXBuffer: GPUBuffer;
 	avatarYBuffer: GPUBuffer;
@@ -115,13 +119,22 @@ export class Renderer {
 			size: tileBufferSize,
 		});
 
-		// initialize node buffer
-		this.positionBufferSize = store.nodeCount * 2 * 4;
-		console.log("store.positionBufferSize:", this.positionBufferSize);
-		this.positionBuffer = this.device.createBuffer({
-			label: "positionBuffer",
+		// initialize node buffers
+		this.xBufferSize = store.nodeCount * 4;
+		this.yBufferSize = store.nodeCount * 4;
+		console.log("store.xBufferSize:", this.xBufferSize);
+		console.log("store.yBufferSize:", this.yBufferSize);
+		this.xBuffer = this.device.createBuffer({
+			label: "xBuffer",
 			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-			size: this.positionBufferSize,
+			size: this.xBufferSize,
+			mappedAtCreation: true,
+		});
+
+		this.yBuffer = this.device.createBuffer({
+			label: "yBuffer",
+			usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+			size: this.yBufferSize,
 			mappedAtCreation: true,
 		});
 
@@ -170,6 +183,7 @@ export class Renderer {
 				{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
 				{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 				{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+				{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
 			],
 		});
 
@@ -178,8 +192,9 @@ export class Renderer {
 			layout: nodeBindGroupLayout,
 			entries: [
 				{ binding: 0, resource: { buffer: this.paramBuffer } },
-				{ binding: 1, resource: { buffer: this.positionBuffer } },
-				{ binding: 2, resource: { buffer: this.colorBuffer } },
+				{ binding: 1, resource: { buffer: this.xBuffer } },
+				{ binding: 2, resource: { buffer: this.yBuffer } },
+				{ binding: 3, resource: { buffer: this.colorBuffer } },
 			],
 		});
 
@@ -318,14 +333,13 @@ export class Renderer {
 		);
 		new Uint8Array(colorMap).set(new Uint8Array(this.store.colorsBuffer));
 
-		const positionMap = this.positionBuffer.getMappedRange(0, this.positionBufferSize);
-		assert(
-			positionMap.byteLength === this.store.positionsBuffer.byteLength,
-			"expected positionMap.byteLength === this.store.positionsBuffer.byteLength",
-		);
+		const xMap = this.xBuffer.getMappedRange(0, this.xBufferSize);
+		const yMap = this.yBuffer.getMappedRange(0, this.yBufferSize);
 
-		new Uint8Array(positionMap).set(new Uint8Array(this.store.positionsBuffer));
-		this.positionBuffer.unmap();
+		new Uint8Array(xMap).set(new Uint8Array(this.store.xBuffer));
+		new Uint8Array(yMap).set(new Uint8Array(this.store.yBuffer));
+		this.xBuffer.unmap();
+		this.yBuffer.unmap();
 		this.colorBuffer.unmap();
 	}
 
@@ -478,7 +492,7 @@ export class Renderer {
 		if (scale < 1) {
 			const log2 = Math.log2(scale);
 			const a = Math.round(Math.sqrt(Math.log2(-log2 + 1)));
-			if (-log2 < 6.5) {
+			if (-log2 < 5.5) {
 				this.divisor[0] = 1;
 			} else if (-log2 < 8.5) {
 				this.divisor[0] = 2;

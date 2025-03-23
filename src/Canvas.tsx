@@ -79,10 +79,11 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const maxY = h / 2 / scale - offsetYRef.current;
 			const minY = -h / 2 / scale - offsetYRef.current;
 
-			const area = storeRef.current.getArea(minX, maxX, minY, maxY);
-			rendererRef.current?.setAvatars(area, refresh);
+			storeRef.current.getArea(minX, maxX, minY, maxY).then((area) => {
+				rendererRef.current?.setAvatars(area, refresh);
+			});
 		},
-		500,
+		1000,
 		{ leading: true, trailing: true, maxWait: 500 },
 	);
 
@@ -149,7 +150,10 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 		setHeight(h);
 		heightRef.current = h;
 
-		init(canvasRef.current, w, h).catch((err) => setError(err + "\n" + err.stack));
+		init(canvasRef.current, w, h).catch((err) => {
+			console.trace(err);
+			setError(err + "\n" + err.stack);
+		});
 
 		new ResizeObserver((entries) => {
 			const entry = entries.find((entry) => entry.target === containerRef.current);
@@ -227,9 +231,10 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const scale = getScale(zoomRef.current);
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
-			const target = storeRef.current.query(x, y, scale);
-			console.log(x, y, target);
-			setTarget(target);
+			storeRef.current.query(x, y, scale).then((target) => {
+				console.log(x, y, target);
+				setTarget(target);
+			});
 		}
 
 		isDraggingRef.current = null;

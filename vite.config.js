@@ -8,7 +8,4 @@ export default defineConfig({
 		// 	"Cross-Origin-Embedder-Policy": "require-corp",
 		// },
 	},
-	optimizeDeps: {
-		exclude: ["@sqlite.org/sqlite-wasm"],
-	},
 });

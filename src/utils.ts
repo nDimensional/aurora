@@ -44,7 +44,7 @@ export function getRadius(scale: number) {
 
 const hsluv = new Hsluv();
 
-export const convert = (h: number, s: number, l: number) => {
+export const convert = (h: number, s: number, l: number): [r: number, g: number, b: number] => {
 	hsluv.hsluv_h = h;
 	hsluv.hsluv_s = s;
 	hsluv.hsluv_l = l;

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
-import { Renderer } from "./Renderer.js";
+import { Renderer } from "./renderers/index.js";
 import { emptyArea, Store } from "./Store.js";
+import { getTileView } from "./Tile.js";
 import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
@@ -59,16 +60,6 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 				return;
 			}
 
-			const z = Math.round(zoomRef.current);
-			const x = Math.round(offsetXRef.current);
-			const y = Math.round(offsetYRef.current);
-			window.location.replace(`#${x},${y},${z}`);
-
-			if (zoomRef.current > 400) {
-				rendererRef.current?.setAvatars(emptyArea, refresh);
-				return;
-			}
-
 			const scale = getScale(zoomRef.current);
 
 			const w = devicePixelRatio * widthRef.current;
@@ -79,12 +70,39 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const maxY = h / 2 / scale - offsetYRef.current;
 			const minY = -h / 2 / scale - offsetYRef.current;
 
-			storeRef.current.getArea(minX, maxX, minY, maxY).then((area) => {
-				rendererRef.current?.setAvatars(area, refresh);
-			});
+			const view = { maxX, minX, maxY, minY };
+
+			const divisor = 2;
+			const unit = Math.ceil(Math.log2(Math.max(w, h) / divisor / scale));
+			console.log("unit", unit);
+			rendererRef.current?.setView(view, unit, refresh);
+
+			const z = Math.round(zoomRef.current);
+			const x = Math.round(offsetXRef.current);
+			const y = Math.round(offsetYRef.current);
+			window.location.replace(`#${x},${y},${z}`);
+
+			// if (zoomRef.current > 400) {
+			// 	rendererRef.current?.setAvatars(emptyArea, refresh);
+			// 	return;
+			// }
+
+			// const scale = getScale(zoomRef.current);
+
+			// const w = devicePixelRatio * widthRef.current;
+			// const h = devicePixelRatio * heightRef.current;
+
+			// const maxX = w / 2 / scale - offsetXRef.current;
+			// const minX = -w / 2 / scale - offsetXRef.current;
+			// const maxY = h / 2 / scale - offsetYRef.current;
+			// const minY = -h / 2 / scale - offsetYRef.current;
+
+			// storeRef.current.getArea(minX, maxX, minY, maxY).then((area) => {
+			// 	rendererRef.current?.setAvatars(area, refresh);
+			// });
 		},
-		1000,
-		{ leading: true, trailing: true, maxWait: 500 },
+		200,
+		{ leading: false, trailing: true, maxWait: 200 },
 	);
 
 	const init = useCallback(async (canvas: HTMLCanvasElement, width: number, height: number) => {
@@ -231,10 +249,12 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const scale = getScale(zoomRef.current);
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
-			storeRef.current.query(x, y, scale).then((target) => {
-				console.log(x, y, target);
-				setTarget(target);
-			});
+			console.log("click", x, y);
+			(window as any).locate?.({ x, y });
+			// storeRef.current.query(x, y, scale).then((target) => {
+			// 	console.log(x, y, target);
+			// 	setTarget(target);
+			// });
 		}
 
 		isDraggingRef.current = null;

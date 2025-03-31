@@ -1,3 +1,4 @@
+import { getDensityLevels, Tile } from "./Tile.js";
 import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export type Area = {
@@ -12,44 +13,33 @@ export const emptyArea: Area = {
 	y: new Float32Array([]),
 };
 
+export type ProgressCallback = (count: number, total: number) => void;
+
 export class Store {
-	public static snapshot = "2025-02-21-1e5";
-	public static xURL = "http://localhost:3000/1e5/positions_x.buffer";
-	public static yURL = "http://localhost:3000/1e5/positions_y.buffer";
-	public static colorsURL = "http://localhost:3000/1e5/colors.buffer";
+	public static snapshot = "2025-02-21";
+	public static baseURL = "http://slacker:3001/2025-02-21";
 
-	// public static snapshot = "2025-02-21";
-	// public static xURL = "http://slacker:3001/2025-02-21/positions_x.buffer";
-	// public static yURL = "http://slacker:3001/2025-02-21/positions_y.buffer";
-	// public static colorsURL = "http://slacker:3001/2025-02-21/colors.buffer";
+	public static capacity = 80 * 4096;
 
-	// public static snapshot = "2025-03-12-1e3";
-	// public static xURL = "http://localhost:3000/1e3/positions_x.buffer";
-	// public static yURL = "http://localhost:3000/1e3/positions_y.buffer";
-	// public static colorsURL = "http://localhost:3000/1e3/colors.buffer";
-
-	public static async create(onProgress?: (count: number, total: number) => void): Promise<Store> {
-		const xHandle = await Store.getFile(Store.xURL, "positions_x.buffer");
-		const yHandle = await Store.getFile(Store.yURL, "positions_y.buffer");
-		const colorsHandle = await Store.getFile(Store.colorsURL, "colors.buffer");
-
-		const xFile = await xHandle.getFile();
-		const yFile = await yHandle.getFile();
-
-		const xBuffer = await xFile.arrayBuffer();
-		const yBuffer = await yFile.arrayBuffer();
-
-		const colorsFile = await colorsHandle.getFile();
-		const colorsBuffer = await colorsFile.arrayBuffer();
-
-		return new Store(xBuffer, yBuffer, colorsBuffer);
+	public static async create(onProgress?: ProgressCallback): Promise<Store> {
+		const tileIndexBuffer = await Store.getFile("tiles/index.json");
+		const tileIndex = JSON.parse(new TextDecoder().decode(new Uint8Array(tileIndexBuffer)));
+		const nodeBuffer = await Store.getFile("tiles/tile-0-root-nodes");
+		return new Store(nodeBuffer, tileIndex);
 	}
 
-	private static async getFile(
-		url: string,
+	public static async getFile(filename: string, onProgress?: ProgressCallback) {
+		const handle = await Store.getFileHandle(filename, onProgress);
+		const file = await handle.getFile();
+		return await file.arrayBuffer();
+	}
+
+	private static async getFileHandle(
 		filename: string,
 		onProgress?: (count: number, total: number) => void,
 	): Promise<FileSystemFileHandle> {
+		const url = `${Store.baseURL}/${filename}`;
+		filename = filename.split("/").join("-");
 		const path = `${Store.snapshot}/${filename}`;
 
 		const rootDirectory = await navigator.storage.getDirectory();
@@ -121,17 +111,19 @@ export class Store {
 		await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
 	}
 
-	public readonly nodeCount: number;
+	// public readonly nodeCount: number;
+
+	public readonly densityLevels: number[];
 
 	private constructor(
-		public readonly xBuffer: ArrayBuffer,
-		public readonly yBuffer: ArrayBuffer,
-		public readonly colorsBuffer: ArrayBuffer,
+		public readonly nodeBuffer: ArrayBuffer,
+		public readonly rootTile: Tile,
 	) {
 		console.log("Initialized Store");
-		assert(xBuffer.byteLength === colorsBuffer.byteLength);
-		assert(yBuffer.byteLength === colorsBuffer.byteLength);
-		this.nodeCount = colorsBuffer.byteLength / 4;
+		console.log(rootTile);
+
+		this.densityLevels = getDensityLevels(rootTile);
+		console.log("density levels", this.densityLevels);
 	}
 
 	public close() {}

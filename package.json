@@ -27,18 +27,13 @@
 	},
 	"dependencies": {
 		"@noble/hashes": "^1.6.1",
-		"@react-three/fiber": "^9.1.0",
-		"@react-three/postprocessing": "^3.0.4",
 		"@types/react": "^19.0.12",
 		"@types/react-dom": "^19.0.4",
-		"@types/three": "^0.174.0",
 		"@webgpu/types": "^0.1.52",
 		"hsluv": "^1.0.1",
 		"p-queue": "^8.0.1",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
-		"three": "^0.174.0",
-		"three-stdlib": "^2.35.14",
 		"use-debounce": "^10.0.4"
 	}
 }

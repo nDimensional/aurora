@@ -44,7 +44,7 @@ export class Store {
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
 			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
-			console.trace(`found existing file at ${path}`);
+			console.log(`found existing file at ${path}`);
 			return await snapshotFile.getFile();
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {

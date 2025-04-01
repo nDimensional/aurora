@@ -120,7 +120,7 @@ export class NodeRenderer extends SquareRenderer {
 		const s = Math.pow(2, unit);
 		const tiles = getTileView(this.store.rootTile, view, s);
 
-		const densityLevel = Math.round(Math.log2(this.store.rootTile.area.s) - unit);
+		const densityLevel = Math.round(Math.max(0, Math.log2(this.store.rootTile.area.s) - unit));
 		const density = this.store.densityLevels[densityLevel] ?? 1.0;
 
 		for (const [tile, { slot }] of this.tiles) {
@@ -160,7 +160,7 @@ export class NodeRenderer extends SquareRenderer {
 	}
 
 	private async addTile(tile: Tile, density: number, refresh?: () => void) {
-		console.log("loading tile", tile.id);
+		console.log("loading tile", tile.id, density);
 		this.tiles.set(tile, { density, slot: null });
 		this.getTile(tile).then(
 			(nodeBuffer) => {

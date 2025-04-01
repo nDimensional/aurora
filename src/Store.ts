@@ -22,32 +22,30 @@ export class Store {
 	public static capacity = 80 * 4096;
 
 	public static async create(onProgress?: ProgressCallback): Promise<Store> {
-		const tileIndexBuffer = await Store.getFile("tiles/index.json");
-		const tileIndex = JSON.parse(new TextDecoder().decode(new Uint8Array(tileIndexBuffer)));
-		const nodeBuffer = await Store.getFile("tiles/tile-0-root-nodes");
+		const tileIndex = await Store.getFile("tiles/index.json")
+			.then((file) => file.text())
+			.then((text) => JSON.parse(text));
+		const nodeBuffer = await Store.getFile("tiles/tile-0-root-nodes").then((file) => file.arrayBuffer());
 		return new Store(nodeBuffer, tileIndex);
 	}
 
-	public static async getFile(filename: string, onProgress?: ProgressCallback) {
-		const handle = await Store.getFileHandle(filename, onProgress);
-		const file = await handle.getFile();
-		return await file.arrayBuffer();
-	}
+	private static inflight = new Map<string, Promise<File>>();
 
-	private static async getFileHandle(
-		filename: string,
-		onProgress?: (count: number, total: number) => void,
-	): Promise<FileSystemFileHandle> {
+	public static async getFile(filename: string, onProgress?: (count: number, total: number) => void): Promise<File> {
 		const url = `${Store.baseURL}/${filename}`;
 		filename = filename.split("/").join("-");
 		const path = `${Store.snapshot}/${filename}`;
+
+		if (Store.inflight.has(path)) {
+			return Store.inflight.get(path)!;
+		}
 
 		const rootDirectory = await navigator.storage.getDirectory();
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
 			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
-			console.log(`found existing file at ${path}`);
-			return snapshotFile;
+			console.trace(`found existing file at ${path}`);
+			return await snapshotFile.getFile();
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {
 				const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: true });
@@ -57,14 +55,17 @@ export class Store {
 					);
 				}
 
+				console.log(`fetching ${url} > ${path}`);
+				const request = Store.fetch(url, snapshotFile, onProgress);
+				Store.inflight.set(path, request);
+
 				try {
-					console.log(`fetching ${url} > ${path}`);
-					await Store.fetch(url, snapshotFile, onProgress);
-					console.log(`wrote file to ${path}`);
-					return snapshotFile;
+					return await request;
 				} catch (err) {
 					await snapshotDirectory.removeEntry(filename);
 					throw err;
+				} finally {
+					Store.inflight.delete(path);
 				}
 			} else {
 				throw err;
@@ -74,10 +75,10 @@ export class Store {
 
 	private static async fetch(
 		url: string,
-		file: FileSystemFileHandle,
+		fileHandle: FileSystemFileHandle,
 		onProgress?: (count: number, total: number) => void,
-	) {
-		const writeStream = await file.createWritable({ keepExistingData: false });
+	): Promise<File> {
+		const writeStream = await fileHandle.createWritable({ keepExistingData: false });
 
 		const res = await fetch(url);
 		assert(res.ok && res.body !== null, "Failed to fetch file from CDN");
@@ -109,6 +110,8 @@ export class Store {
 		}
 
 		await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
+		console.log(`wrote file to ${fileHandle.name}`);
+		return await fileHandle.getFile();
 	}
 
 	// public readonly nodeCount: number;

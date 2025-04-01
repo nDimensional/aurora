@@ -2,7 +2,7 @@ import nodeShader from "../../shaders/node.wgsl?raw";
 
 import { Store } from "../Store.js";
 import { getTileView, Tile, View } from "../Tile.js";
-import { assert } from "../utils.js";
+import { assert, P } from "../utils.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 
 export const stride = 12;
@@ -145,15 +145,25 @@ export class NodeRenderer extends SquareRenderer {
 
 	#cache = new Map<Tile, ArrayBuffer>();
 
-	private addTile(tile: Tile, density: number, refresh?: () => void) {
-		console.log("loading tile", tile.id);
+	private async getTile(tile: Tile): Promise<ArrayBuffer> {
+		let nodeBuffer = this.#cache.get(tile);
+		if (nodeBuffer === undefined) {
+			const file = await Store.getFile(`tiles/${tile.nodes}`);
+			console.log("retrieved tile", tile, file.size);
+			nodeBuffer = await file.arrayBuffer();
+			console.log(tile.id, tile.count, nodeBuffer.byteLength);
+			assert(nodeBuffer.byteLength === stride * tile.count);
+			this.#cache.set(tile, nodeBuffer);
+		}
 
+		return nodeBuffer;
+	}
+
+	private async addTile(tile: Tile, density: number, refresh?: () => void) {
+		console.log("loading tile", tile.id);
 		this.tiles.set(tile, { density, slot: null });
-		const cachedBuffer = this.#cache.get(tile);
-		Promise.resolve(cachedBuffer ?? Store.getFile(`tiles/${tile.nodes}`)).then(
+		this.getTile(tile).then(
 			(nodeBuffer) => {
-				this.#cache.set(tile, nodeBuffer);
-				assert(nodeBuffer.byteLength === stride * tile.count);
 				const entry = this.tiles.get(tile);
 				if (entry === undefined || entry.slot !== null) {
 					return;

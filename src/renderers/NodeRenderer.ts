@@ -1,9 +1,13 @@
+import logger from "weald";
+
 import nodeShader from "../../shaders/node.wgsl?raw";
 
 import { Store } from "../Store.js";
 import { getTileView, Tile, View } from "../Tile.js";
 import { assert } from "../utils.js";
 import { SquareRenderer } from "./SquareRenderer.js";
+
+const log = logger("aurora:render:node");
 
 export const stride = 12;
 export const slotCount = 9;
@@ -146,9 +150,7 @@ export class NodeRenderer extends SquareRenderer {
 		let nodeBuffer = this.#cache.get(tile);
 		if (nodeBuffer === undefined) {
 			const file = await Store.getFile(`tiles/${tile.nodes}`);
-			console.log("retrieved tile", tile, file.size);
 			nodeBuffer = await file.arrayBuffer();
-			console.log(tile.id, tile.count, nodeBuffer.byteLength);
 			assert(nodeBuffer.byteLength === stride * tile.count);
 			this.#cache.set(tile, nodeBuffer);
 		}
@@ -157,7 +159,7 @@ export class NodeRenderer extends SquareRenderer {
 	}
 
 	private addTile(tile: Tile, density: number, refresh?: () => void) {
-		console.log("loading tile", tile.id, density);
+		log("loading tile %s with density %d", tile.id, density);
 		this.tiles.set(tile, { density, slot: null });
 		this.getTile(tile).then(
 			(nodeBuffer) => {
@@ -175,7 +177,7 @@ export class NodeRenderer extends SquareRenderer {
 					assert(!this.tiles.has(this.slots[slot]), "recycled active tile");
 				}
 
-				console.log("copying", tile.id, "to", slot);
+				log("copying tile %s to slot %d", tile.id, slot);
 				this.recycling.delete(slot);
 				entry.slot = slot;
 				this.slots[slot] = tile;

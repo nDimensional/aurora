@@ -93,7 +93,7 @@ export class Renderer {
 			cache,
 		);
 
-		console.log("Initialized Renderer");
+		console.log("initialized renderers");
 	}
 
 	public setSize(width: number, height: number) {
@@ -142,5 +142,7 @@ export class Renderer {
 
 	public setTiles(tiles: Tile[], unit: number, refresh?: () => void) {
 		this.nodeRenderer.setTiles(tiles, unit, refresh);
+
+		tiles.filter((tile) => tile.atlas !== undefined);
 	}
 }

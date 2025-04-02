@@ -1,6 +1,10 @@
+import logger from "weald";
+
 import React, { useEffect, useState } from "react";
 
 import { Profile } from "./utils.js";
+
+const log = logger("aurora:target");
 
 export const Target: React.FC<{ id: number }> = ({ id }) => {
 	const [profile, setProfile] = useState<Profile | null>(null);
@@ -9,7 +13,7 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 
 	useEffect(() => {
 		const key = id.toString(16).padStart(8, "0");
-		console.log("fetching id", id, key);
+		log("fetching id %d (%s)", id, key);
 
 		const controller = new AbortController();
 		fetch(`https://ndimensional-aurora.pages.dev/profile/${key}`, { signal: controller.signal })
@@ -24,7 +28,7 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 			})
 			.catch((err) => {
 				if (err instanceof DOMException && err.name === "AbortError") {
-					console.log("aborted profile request");
+					log("aborted profile request");
 				} else {
 					console.error(err);
 					setError(`${err}`);

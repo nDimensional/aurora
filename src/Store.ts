@@ -1,4 +1,6 @@
-import { getDensityLevels, Tile } from "./Tile.js";
+import logger from "weald";
+
+import { getDensityLevels, Tile, View } from "./Tile.js";
 import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
 export type Area = {
@@ -15,6 +17,8 @@ export const emptyArea: Area = {
 
 export type ProgressCallback = (count: number, total: number) => void;
 
+const log = logger("aurora:store");
+
 export class Store {
 	public static snapshot = "2025-02-21";
 	public static baseURL = "http://slacker:3001/2025-02-21";
@@ -25,8 +29,8 @@ export class Store {
 		const tileIndex = await Store.getFile("tiles/index.json")
 			.then((file) => file.text())
 			.then((text) => JSON.parse(text));
-		const nodeBuffer = await Store.getFile("tiles/tile-0-root-nodes").then((file) => file.arrayBuffer());
-		return new Store(nodeBuffer, tileIndex);
+
+		return new Store(tileIndex);
 	}
 
 	private static inflight = new Map<string, Promise<File>>();
@@ -44,7 +48,7 @@ export class Store {
 		const snapshotDirectory = await rootDirectory.getDirectoryHandle(Store.snapshot, { create: true });
 		try {
 			const snapshotFile = await snapshotDirectory.getFileHandle(filename, { create: false });
-			console.log(`found existing file at ${path}`);
+			log("found existing file at %s", path);
 			return await snapshotFile.getFile();
 		} catch (err) {
 			if (err instanceof DOMException && err.name === "NotFoundError") {
@@ -55,7 +59,7 @@ export class Store {
 					);
 				}
 
-				console.log(`fetching ${url} > ${path}`);
+				log("fetching %s > %s", url, path);
 				const request = Store.fetch(url, snapshotFile, onProgress);
 				Store.inflight.set(path, request);
 
@@ -96,7 +100,7 @@ export class Store {
 					controller.enqueue(chunk);
 					if (total !== null) {
 						loaded += chunk.length;
-						onProgress?.(loaded, total);
+						onProgress(loaded, total);
 					}
 				},
 			});
@@ -109,24 +113,28 @@ export class Store {
 			transforms.push(decompressTransform);
 		}
 
-		await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
-		console.log(`wrote file to ${fileHandle.name}`);
-		return await fileHandle.getFile();
-	}
+		const chunks: Uint8Array[] = [];
+		const sinkTransform = new TransformStream({
+			transform(chunk, controller) {
+				controller.enqueue(chunk);
+				chunks.push(chunk);
+			},
+		});
+		transforms.push(sinkTransform);
 
-	// public readonly nodeCount: number;
+		await transforms.reduce((stream, transform) => stream.pipeThrough(transform), res.body).pipeTo(writeStream);
+		log("wrote file to %s", fileHandle.name);
+		return new File(chunks, fileHandle.name);
+	}
 
 	public readonly densityLevels: number[];
 
-	private constructor(
-		public readonly nodeBuffer: ArrayBuffer,
-		public readonly rootTile: Tile,
-	) {
-		console.log("Initialized Store");
-		console.log(rootTile);
+	private constructor(public readonly rootTile: Tile) {
+		log("Initialized Store");
+		log(rootTile);
 
 		this.densityLevels = getDensityLevels(rootTile);
-		console.log("density levels", this.densityLevels);
+		log("density levels: %o", this.densityLevels);
 	}
 
 	public close() {}
@@ -153,8 +161,8 @@ export class Store {
 
 	public static areaLimit = ROW_COUNT * COL_COUNT - 1;
 
-	public async getArea(minX: number, maxX: number, minY: number, maxY: number, signal?: AbortSignal): Promise<Area> {
-		const query = Object.entries({ minX, maxX, minY, maxY })
+	public async getArea(view: View, signal?: AbortSignal): Promise<Area> {
+		const query = Object.entries(view)
 			.map((entry) => entry.join("="))
 			.join("&");
 

@@ -1,9 +1,13 @@
+import logger from "weald";
+
 import avatarShader from "../../shaders/avatar.wgsl?raw";
 
 import { Cache } from "../Cache.js";
 import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS } from "../utils.js";
 import { Store, Area } from "../Store.js";
 import { SquareRenderer } from "./SquareRenderer.js";
+
+const log = logger("aurora:render:avatar");
 
 export class AvatarRenderer extends SquareRenderer {
 	avatarXBuffer: GPUBuffer;
@@ -214,7 +218,7 @@ export class AvatarRenderer extends SquareRenderer {
 		if (image !== undefined) {
 			const tile = this.recycle();
 			if (tile === null) {
-				console.log("texture atlas full, ignoring", id);
+				log("texture atlas full, ignoring %d", id);
 			} else {
 				this.recycling.delete(tile);
 				this.tileMap.set(id, tile);

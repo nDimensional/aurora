@@ -140,7 +140,7 @@ export class Renderer {
 		this.avatarRenderer.setAvatars(area, refresh);
 	}
 
-	public setView(view: View, unit: number, refresh?: () => void) {
-		this.nodeRenderer.setView(view, unit, refresh);
+	public setTiles(tiles: Tile[], unit: number, refresh?: () => void) {
+		this.nodeRenderer.setTiles(tiles, unit, refresh);
 	}
 }

@@ -2,7 +2,7 @@ import nodeShader from "../../shaders/node.wgsl?raw";
 
 import { Store } from "../Store.js";
 import { getTileView, Tile, View } from "../Tile.js";
-import { assert, P } from "../utils.js";
+import { assert } from "../utils.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 
 export const stride = 12;
@@ -116,10 +116,7 @@ export class NodeRenderer extends SquareRenderer {
 		return null;
 	}
 
-	public setView(view: View, unit: number, refresh?: () => void) {
-		const s = Math.pow(2, unit);
-		const tiles = getTileView(this.store.rootTile, view, s);
-
+	public setTiles(tiles: Tile[], unit: number, refresh?: () => void) {
 		const densityLevel = Math.round(Math.max(0, Math.log2(this.store.rootTile.area.s) - unit));
 		const density = this.store.densityLevels[densityLevel] ?? 1.0;
 
@@ -159,7 +156,7 @@ export class NodeRenderer extends SquareRenderer {
 		return nodeBuffer;
 	}
 
-	private async addTile(tile: Tile, density: number, refresh?: () => void) {
+	private addTile(tile: Tile, density: number, refresh?: () => void) {
 		console.log("loading tile", tile.id, density);
 		this.tiles.set(tile, { density, slot: null });
 		this.getTile(tile).then(

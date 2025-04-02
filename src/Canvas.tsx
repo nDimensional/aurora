@@ -75,7 +75,10 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const divisor = 2;
 			const unit = Math.ceil(Math.log2(Math.max(w, h) / divisor / scale));
 			console.log("unit", unit);
-			rendererRef.current?.setView(view, unit, refresh);
+
+			const s = Math.pow(2, unit);
+			const tiles = getTileView(storeRef.current.rootTile, view, s);
+			rendererRef.current?.setTiles(tiles, unit, refresh);
 
 			const z = Math.round(zoomRef.current);
 			const x = Math.round(offsetXRef.current);

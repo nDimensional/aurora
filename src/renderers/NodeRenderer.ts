@@ -3,7 +3,7 @@ import logger from "weald";
 import nodeShader from "../../shaders/node.wgsl?raw";
 
 import { Store } from "../Store.js";
-import { getTileView, Tile, View } from "../Tile.js";
+import { getTilesInView, Tile, View } from "../Tile.js";
 import { assert } from "../utils.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 
@@ -101,9 +101,9 @@ export class NodeRenderer extends SquareRenderer {
 
 		for (const [tile, { slot, density }] of this.tiles) {
 			if (slot !== null) {
-				assert(this.slots[slot] === tile);
+				assert(this.slots[slot] === tile, "expected this.slots[slot] === tile");
 				const nodeCount = Math.round(tile.total * density);
-				assert(nodeCount <= tile.count);
+				assert(nodeCount <= tile.count, "expected nodeCount <= tile.count");
 				passEncoder.setBindGroup(1, this.nodeBindGroups[slot]);
 				passEncoder.drawIndexed(SquareRenderer.indexBufferData.length, nodeCount);
 			}
@@ -149,9 +149,10 @@ export class NodeRenderer extends SquareRenderer {
 	private async getTile(tile: Tile): Promise<ArrayBuffer> {
 		let nodeBuffer = this.#cache.get(tile);
 		if (nodeBuffer === undefined) {
-			const file = await Store.getFile(`tiles/${tile.nodes}`);
+			const file = await Store.getFile(tile.nodes);
 			nodeBuffer = await file.arrayBuffer();
-			assert(nodeBuffer.byteLength === stride * tile.count);
+
+			assert(nodeBuffer.byteLength === stride * tile.count, "expected nodeBuffer.byteLength === stride * tile.count");
 			this.#cache.set(tile, nodeBuffer);
 		}
 
@@ -194,6 +195,7 @@ export class NodeRenderer extends SquareRenderer {
 	private copyTile(slot: number, nodeBuffer: ArrayBuffer) {
 		const source = new Uint8Array(nodeBuffer);
 		const target = this.nodeBuffers[slot];
+
 		assert(source.byteLength === (this.slots[slot]?.count ?? 0) * stride);
 		this.device.queue.writeBuffer(target, 0, source, 0, source.byteLength);
 	}

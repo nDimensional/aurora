@@ -1,4 +1,4 @@
-import { assert } from "./utils.js";
+import { View } from "./View.js";
 
 export interface Tile {
 	id: string;
@@ -8,37 +8,36 @@ export interface Tile {
 	area: { s: number; x: number; y: number };
 	nodes: string;
 	atlas?: string;
+	index?: string;
 	ne?: Tile | null;
 	nw?: Tile | null;
 	sw?: Tile | null;
 	se?: Tile | null;
 }
 
-export type View = { minX: number; maxX: number; minY: number; maxY: number };
-
-export function intersect(tile: Tile, { minX, maxX, minY, maxY }: View): boolean {
-	const { s, x, y } = tile.area;
-	const s2 = s / 2;
-	if (x + s2 < minX || maxX < x - s2) return false;
-	if (y + s2 < minY || maxY < y - s2) return false;
-	return true;
-}
-
-export function getTileView(tile: Tile, view: View, s: number, result: Tile[] = []): Tile[] {
+export function getTilesInView(tile: Tile, view: View, s: number, result: Tile[] = []): Tile[] {
 	if (intersect(tile, view)) {
 		if (tile.atlas !== undefined) {
 			result.push(tile);
 		} else if (tile.area.s <= s) {
 			result.push(tile);
 		} else {
-			if (tile.ne) getTileView(tile.ne, view, s, result);
-			if (tile.nw) getTileView(tile.nw, view, s, result);
-			if (tile.sw) getTileView(tile.sw, view, s, result);
-			if (tile.se) getTileView(tile.se, view, s, result);
+			if (tile.ne) getTilesInView(tile.ne, view, s, result);
+			if (tile.nw) getTilesInView(tile.nw, view, s, result);
+			if (tile.sw) getTilesInView(tile.sw, view, s, result);
+			if (tile.se) getTilesInView(tile.se, view, s, result);
 		}
 	}
 
 	return result;
+}
+
+function intersect(tile: Tile, { minX, maxX, minY, maxY }: View): boolean {
+	const { s, x, y } = tile.area;
+	const s2 = s / 2;
+	if (x + s2 < minX || maxX < x - s2) return false;
+	if (y + s2 < minY || maxY < y - s2) return false;
+	return true;
 }
 
 export function getDensityLevels(tile: Tile, densityLevels: number[] = []): number[] {

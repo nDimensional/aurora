@@ -8,10 +8,10 @@ export type Profile = {
 	description: string | null;
 };
 
-export function assert(condition: boolean, message?: string, props?: any): asserts condition {
+export function assert(condition: boolean, message = "assert failed", props?: any): asserts condition {
 	if (!condition) {
 		console.error(message, props);
-		throw new Error(message ?? "assert failed");
+		throw new Error(message);
 	}
 }
 

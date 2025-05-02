@@ -1,5 +1,3 @@
-import logger from "weald";
-
 import tileShader from "../../shaders/tile.wgsl?raw";
 
 import { convert } from "../utils.js";

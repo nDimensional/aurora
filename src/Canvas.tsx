@@ -5,8 +5,8 @@ import { useDebouncedCallback } from "use-debounce";
 
 import { Renderer } from "./renderers/index.js";
 import { emptyArea, Store } from "./Store.js";
-import { getTileView } from "./Tile.js";
-import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
+import { getTilesInView, Tile } from "./Tile.js";
+import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM, getRadius } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
 
@@ -49,7 +49,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 	const [target, setTarget] = useState<{ id: number; x: number; y: number } | null>(null);
 	const targetOffset = useMemo(() => {
 		if (target === null) {
-			return null;
+			return { clientX: 0, clientY: 0 };
 		} else {
 			const scale = getScale(zoomRef.current);
 			const clientX = ((target.x + offsetXRef.current) * scale) / devicePixelRatio + widthRef.current / 2;
@@ -57,6 +57,8 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			return { clientX, clientY };
 		}
 	}, [target]);
+
+	const tilesRef = useRef<Tile[]>([]);
 
 	const refresh = useDebouncedCallback(
 		() => {
@@ -66,8 +68,8 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 			const scale = getScale(zoomRef.current);
 
-			const w = devicePixelRatio * widthRef.current;
-			const h = devicePixelRatio * heightRef.current;
+			const w = widthRef.current * devicePixelRatio;
+			const h = heightRef.current * devicePixelRatio;
 
 			const maxX = w / 2 / scale - offsetXRef.current;
 			const minX = -w / 2 / scale - offsetXRef.current;
@@ -81,7 +83,8 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			log("unit", unit);
 
 			const s = Math.pow(2, unit);
-			const tiles = getTileView(storeRef.current.rootTile, view, s);
+			const tiles = getTilesInView(storeRef.current.rootTile, view, s);
+			tilesRef.current = tiles;
 			rendererRef.current?.setTiles(tiles, unit, refresh);
 
 			const z = Math.round(zoomRef.current);
@@ -92,7 +95,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			if (zoomRef.current > 400) {
 				rendererRef.current?.setAvatars(emptyArea, refresh);
 			} else {
-				storeRef.current.getArea(view).then((area) => {
+				storeRef.current.getArea(view, tiles).then((area) => {
 					rendererRef.current?.setAvatars(area, refresh);
 				});
 			}
@@ -245,11 +248,10 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
 			log("click (%d, %d)", x, y);
-			(window as any).locate?.({ x, y });
-			// storeRef.current.query(x, y, scale).then((target) => {
-			// 	log(x, y, target);
-			// 	setTarget(target);
-			// });
+			storeRef.current.query(tilesRef.current, x, y, scale).then((target) => {
+				log("resolved target %o", target);
+				setTarget(target);
+			});
 		}
 
 		isDraggingRef.current = null;
@@ -261,18 +263,18 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			return;
 		}
 
-		try {
-			const { x, y } = storeRef.current.locate(id);
-			offsetXRef.current = -x;
-			offsetYRef.current = -y;
-			rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
-			zoomRef.current = MIN_ZOOM;
-			rendererRef.current.setScale(getScale(zoomRef.current));
-			refresh();
-			setTarget({ id, x, y });
-		} catch (err) {
-			alert("user not found");
-		}
+		storeRef.current.locate(id).then(
+			({ x, y }) => {
+				offsetXRef.current = -x;
+				offsetYRef.current = -y;
+				zoomRef.current = MIN_ZOOM;
+				rendererRef.current?.setOffset(offsetXRef.current, offsetYRef.current);
+				rendererRef.current?.setScale(getScale(zoomRef.current));
+				refresh();
+				setTarget({ id, x, y });
+			},
+			(err) => alert("user not found"),
+		);
 	}, []);
 
 	if (error !== null) {
@@ -299,7 +301,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 						</div>
 					</div>
 				)}
-				{target && targetOffset && (
+				{target && (
 					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY, width: 360 }}>
 						<Target id={target.id} />
 					</div>

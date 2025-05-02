@@ -1,32 +1,29 @@
 import logger from "weald";
 
-import { getDensityLevels, Tile, View } from "./Tile.js";
+import { Tile, getDensityLevels } from "./Tile.js";
+import { View } from "./View.js";
+import { Atlas, Target } from "./Atlas.js";
 import { COL_COUNT, ROW_COUNT, assert, getRadius } from "./utils.js";
 
-export type Area = {
-	id: Uint32Array;
-	x: Float32Array;
-	y: Float32Array;
-};
+export type Area = { id: number; x: number; y: number }[];
 
-export const emptyArea: Area = {
-	id: new Uint32Array([]),
-	x: new Float32Array([]),
-	y: new Float32Array([]),
-};
+export const emptyArea: Area = [];
 
 export type ProgressCallback = (count: number, total: number) => void;
 
 const log = logger("aurora:store");
 
 export class Store {
-	public static snapshot = "2025-02-21";
-	public static baseURL = "http://slacker:3001/2025-02-21";
+	// public static snapshot = "2025-02-21";
+	// public static baseURL = "http://slacker:3001/2025-02-21/tiles";
+	// public static capacity = 80 * 4096;
 
-	public static capacity = 80 * 4096;
+	public static snapshot = "2025-02-21-1e5";
+	public static baseURL = "/1e5";
+	public static capacity = 10000;
 
 	public static async create(onProgress?: ProgressCallback): Promise<Store> {
-		const tileIndex = await Store.getFile("tiles/index.json")
+		const tileIndex = await Store.getFile("index.json")
 			.then((file) => file.text())
 			.then((text) => JSON.parse(text));
 
@@ -37,7 +34,6 @@ export class Store {
 
 	public static async getFile(filename: string, onProgress?: (count: number, total: number) => void): Promise<File> {
 		const url = `${Store.baseURL}/${filename}`;
-		filename = filename.split("/").join("-");
 		const path = `${Store.snapshot}/${filename}`;
 
 		if (Store.inflight.has(path)) {
@@ -139,11 +135,38 @@ export class Store {
 
 	public close() {}
 
-	public locate(id: number): { x: number; y: number } {
-		throw new Error("not implemented");
+	public async locate(id: number): Promise<{ x: number; y: number }> {
+		const route = `/api/${Store.snapshot}/position/${id.toString(16).padStart(8, "0")}`;
+		const res = await fetch(`http://slacker:3000` + route);
+		assert(res.ok, "failed to fetch route /api/:snapshot/position/:id");
+		return await res.json();
 	}
 
-	public async query(
+	public async query(tiles: Tile[], x: number, y: number, scale: number, signal?: AbortSignal): Promise<Target | null> {
+		const r = getRadius(scale);
+		const leafTiles = tiles.filter((tile) => tile.atlas !== undefined);
+		let result: Target | null = null;
+		await Promise.all(
+			leafTiles.map((tile) =>
+				Store.getAtlas(tile).then(
+					(atlas) => {
+						console.log("looking for nearest body", { x, y }, r);
+						const target = atlas.getNearestBody(x, y);
+						if (target.distance < (result?.distance ?? r)) {
+							result = target;
+						}
+					},
+					(err) => log("failed to fetch atlas: %O", err),
+				),
+			),
+		);
+
+		console.log("got result", result);
+		return result;
+	}
+
+	public async query2(
+		tiles: Tile[],
 		x: number,
 		y: number,
 		scale: number,
@@ -156,31 +179,83 @@ export class Store {
 
 		const res = await fetch(`http://slacker:3000/api/${Store.snapshot}/radius?${query}`, { signal });
 		const result: { id: number; x: number; y: number } | null = await res.json();
-		return result;
+		if (result === null || Math.sqrt(Math.pow(result.x - x, 2) + Math.pow(result.y - y, 2)) > r) {
+			return null;
+		} else {
+			return result;
+		}
 	}
 
 	public static areaLimit = ROW_COUNT * COL_COUNT - 1;
 
-	public async getArea(view: View, signal?: AbortSignal): Promise<Area> {
-		const query = Object.entries(view)
-			.map((entry) => entry.join("="))
-			.join("&");
+	public static atlasCache = new Map<string, Atlas>();
 
-		const res = await fetch(`http://slacker:3000/api/${Store.snapshot}/area?${query}`, { signal });
-		const result: [id: number, x: number, y: number][] = await res.json();
+	public static async getAtlas(tile: Tile): Promise<Atlas> {
+		assert(tile.atlas !== undefined, "internal error - expected tile.atlas !== undefined");
+		// assert(tile.index !== undefined, "internal error - expected tile.index !== undefined");
+		let atlas = Store.atlasCache.get(tile.atlas);
+		if (atlas === undefined) {
+			const atlasBuffer = await Store.getFile(tile.atlas).then((file) => file.arrayBuffer());
+			// const [atlasBuffer, indexBuffer] = await Promise.all([
+			// 	Store.getFile(tile.atlas).then((file) => file.arrayBuffer()),
+			// 	Store.getFile(tile.index).then((file) => file.arrayBuffer()),
+			// ]);
 
-		const area: Area = {
-			id: new Uint32Array(result.length),
-			x: new Float32Array(result.length),
-			y: new Float32Array(result.length),
-		};
-
-		for (const [i, [id, x, y]] of result.entries()) {
-			area.id[i] = id;
-			area.x[i] = x;
-			area.y[i] = y;
+			atlas = new Atlas(tile, atlasBuffer);
+			// atlas = new Atlas(tile, atlasBuffer, indexBuffer);
+			Store.atlasCache.set(tile.atlas, atlas);
 		}
 
-		return area;
+		return atlas;
 	}
+
+	public static areaBuffer = new ArrayBuffer(Store.areaLimit * 3 * 4);
+	public static areaView = new DataView(Store.areaBuffer);
+
+	public async getArea(view: View, tiles: Tile[], signal?: AbortSignal): Promise<Area> {
+		const leafTiles = tiles.filter((tile) => tile.atlas !== undefined);
+		console.log("get area", leafTiles, view);
+		const bodies: { id: number; x: number; y: number }[] = [];
+		await Promise.all(
+			leafTiles.map((tile) =>
+				Store.getAtlas(tile).then(
+					(atlas) => {
+						console.log("got atlas", atlas, atlas.area.intersectView(view));
+						for (const body of atlas.getBodies(view)) {
+							if (bodies.length >= Store.areaLimit) {
+								break;
+							}
+
+							bodies.push(body);
+						}
+					},
+					(err) => log("failed to fetch atlas: %O", err),
+				),
+			),
+		);
+
+		bodies.sort((a, b) => (a.id < b.id ? -1 : b.id < a.id ? 1 : 0));
+		console.log("got bodies", bodies);
+		return bodies;
+	}
+
+	// public async getArea2(view: View, tiles: Tile[], signal?: AbortSignal): Promise<Area> {
+	// 	const atlasIds: string[] = [];
+	// 	for (const tile of tiles) {
+	// 		if (tile.atlas !== undefined) {
+	// 			atlasIds.push(tile.atlas);
+	// 		}
+	// 	}
+	// 	Promise.all(atlasIds.map((atlas) => Store.getFile(atlas))).then((files) => {
+	// 		files;
+	// 	});
+	// 	const query = Object.entries(view)
+	// 		.map((entry) => entry.join("="))
+	// 		.join("&");
+	// 	const res = await fetch(`http://slacker:3000/api/${Store.snapshot}/area?${query}`, { signal });
+	// 	const result: [id: number, x: number, y: number][] = await res.json();
+	// 	const bodies = result.map(([id, x, y]) => ({ id, x, y }));
+	// 	bodies.sort((a, b) => (a.id < b.id ? -1 : b.id < a.id ? 1 : 0));
+	// 	return bodies;
+	// }
 }

@@ -3,7 +3,7 @@ import logger from "weald";
 import avatarShader from "../../shaders/avatar.wgsl?raw";
 
 import { Cache } from "../Cache.js";
-import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS } from "../utils.js";
+import { assert, AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS } from "../utils.js";
 import { Store, Area } from "../Store.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 
@@ -145,7 +145,7 @@ export class AvatarRenderer extends SquareRenderer {
 	private areaIdCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaXCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
 	private areaYCacheBuffer = new ArrayBuffer(4 * Store.areaLimit);
-	private area: Area = {
+	private area = {
 		id: new Uint32Array(this.areaIdCacheBuffer),
 		x: new Float32Array(this.areaXCacheBuffer),
 		y: new Float32Array(this.areaYCacheBuffer),
@@ -171,12 +171,12 @@ export class AvatarRenderer extends SquareRenderer {
 	public setAvatars(area: Area, refresh?: () => void) {
 		let i = 0;
 		let j = 0;
-		while (i < this.avatarCount && j < area.id.length) {
-			if (this.area.id[i] < area.id[j]) {
+		while (i < this.avatarCount && j < area.length) {
+			if (this.area.id[i] < area[j].id) {
 				this.removeAvatar(this.area.id[i]);
 				i++;
-			} else if (this.area.id[i] > area.id[j]) {
-				this.addAvatar(area.id[j], refresh);
+			} else if (this.area.id[i] > area[j].id) {
+				this.addAvatar(area[j].id, refresh);
 				j++;
 			} else {
 				i++;
@@ -189,21 +189,26 @@ export class AvatarRenderer extends SquareRenderer {
 			i++;
 		}
 
-		while (j < area.id.length) {
-			this.addAvatar(area.id[j], refresh);
+		while (j < area.length) {
+			this.addAvatar(area[j].id, refresh);
 			j++;
 		}
 
-		for (const [avatar, id] of area.id.entries()) {
-			this.cells[avatar] = this.tileMap.get(id)!;
+		this.avatarCount = area.length;
+
+		for (const [avatar, body] of area.entries()) {
+			const tile = this.tileMap.get(body.id);
+			assert(tile !== undefined, "internal error - expected tile !== undefined");
+			this.cells[avatar] = tile;
+
+			this.area.id[avatar] = body.id;
+			this.area.x[avatar] = body.x;
+			this.area.y[avatar] = body.y;
 		}
 
-		this.area.id.set(area.id);
-		this.avatarCount = area.id.length;
-
-		this.device.queue.writeBuffer(this.avatarXBuffer, 0, area.x);
-		this.device.queue.writeBuffer(this.avatarYBuffer, 0, area.y);
-		this.device.queue.writeBuffer(this.tileBuffer, 0, this.cells);
+		this.device.queue.writeBuffer(this.avatarXBuffer, 0, this.area.x.subarray(0, area.length));
+		this.device.queue.writeBuffer(this.avatarYBuffer, 0, this.area.y.subarray(0, area.length));
+		this.device.queue.writeBuffer(this.tileBuffer, 0, this.cells.subarray(0, area.length));
 	}
 
 	private addAvatar(id: number, refresh?: () => void) {

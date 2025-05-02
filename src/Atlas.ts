@@ -1,6 +1,7 @@
-import { Tile, View } from "./Tile.js";
+import { Tile } from "./Tile.js";
+import { View, contains } from "./View.js";
 
-type Target = { id: number; x: number; y: number; distance: number };
+export type Target = { id: number; x: number; y: number; distance: number };
 
 enum Quadrant {
 	ne = 0,
@@ -39,17 +40,17 @@ class Area {
 	}
 
 	public divide(quadrant: Quadrant): Area {
-		switch (quadrant) {
-			case Quadrant.ne:
-				return new Area(this.r, this.x + this.r, this.y + this.r);
-			case Quadrant.nw:
-				return new Area(this.r, this.x - this.r, this.y + this.r);
-			case Quadrant.sw:
-				return new Area(this.r, this.x - this.r, this.y - this.r);
-			case Quadrant.se:
-				return new Area(this.r, this.x + this.r, this.y - this.r);
-			default:
-				throw new Error("invalid quadrant");
+		const halfR = this.r / 2;
+		if (quadrant === Quadrant.ne) {
+			return new Area(halfR, this.x + halfR, this.y + halfR);
+		} else if (quadrant === Quadrant.nw) {
+			return new Area(halfR, this.x - halfR, this.y + halfR);
+		} else if (quadrant === Quadrant.sw) {
+			return new Area(halfR, this.x - halfR, this.y - halfR);
+		} else if (quadrant === Quadrant.se) {
+			return new Area(halfR, this.x + halfR, this.y - halfR);
+		} else {
+			throw new Error("invalid quadrant");
 		}
 	}
 
@@ -94,53 +95,58 @@ export class Atlas {
 	) {
 		this.area = new Area(tile.area.s / 2, tile.area.x, tile.area.y);
 		this.view = new DataView(atlasBuffer);
+
+		for (const body of this.getBodies()) {
+			if (!this.area.contains(body.x, body.y)) {
+				console.error("WTF!!", this.area, body);
+			}
+		}
 	}
 
-	public *getBodies(view: View): IterableIterator<{ id: number; x: number; y: number }> {
-		yield* this.#getBodies(view, this.area, 0);
+	public *getBodies(
+		view: View = { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity },
+	): IterableIterator<{ id: number; x: number; y: number }> {
+		yield* this.#getBodies(this.area, 0, view);
 	}
 
-	*#getBodies(view: View, area: Area, idx: number): IterableIterator<{ id: number; x: number; y: number }> {
-		const offset = idx * Atlas.stride;
-
+	*#getBodies(area: Area, idx: number, view: View): IterableIterator<{ id: number; x: number; y: number }> {
 		// Check if this is a leaf node (se quadrant is 0)
 		if (this.#getQuadrant(idx, Quadrant.se) === 0) {
-			const id = this.#getQuadrant(idx, Quadrant.ne);
-			const x = this.view.getFloat32(offset + 4, true);
-			const y = this.view.getFloat32(offset + 8, true);
+			const offset = idx * Atlas.stride;
+			const node = {
+				id: this.#getQuadrant(idx, Quadrant.ne),
+				x: this.view.getFloat32(offset + 4, true),
+				y: this.view.getFloat32(offset + 8, true),
+			};
 
 			// Check if the body is within the search box
-			if (x >= view.minX && x <= view.maxX && y >= view.minY && y <= view.maxY) {
-				yield { id, x, y };
+			if (contains(view, node)) {
+				yield node;
 			}
-			return;
-		}
-
-		if (area.intersectView(view)) {
+		} else if (area.intersectView(view)) {
 			// Recursively search children
 			const ne = this.#getQuadrant(idx, Quadrant.ne);
 			const nw = this.#getQuadrant(idx, Quadrant.nw);
 			const sw = this.#getQuadrant(idx, Quadrant.sw);
 			const se = this.#getQuadrant(idx, Quadrant.se);
 
-			if (ne !== Atlas.NULL) yield* this.#getBodies(view, area.divide(Quadrant.ne), ne);
-			if (nw !== Atlas.NULL) yield* this.#getBodies(view, area.divide(Quadrant.nw), nw);
-			if (sw !== Atlas.NULL) yield* this.#getBodies(view, area.divide(Quadrant.sw), sw);
-			if (se !== Atlas.NULL) yield* this.#getBodies(view, area.divide(Quadrant.se), se);
+			if (ne !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.ne), ne, view);
+			if (nw !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.nw), nw, view);
+			if (sw !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.sw), sw, view);
+			if (se !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.se), se, view);
 		}
 	}
 
 	public getNearestBody(x: number, y: number): Target {
 		const target = { id: Atlas.NULL, x: 0, y: 0, distance: Infinity };
 		this.#getNearestBody(target, this.area, 0, x, y);
-		target.distance = Math.pow(target.distance, 2);
+		target.distance = Math.sqrt(target.distance);
 		return target;
 	}
 
 	#getNearestBody(target: Target, area: Area, idx: number, x: number, y: number) {
-		const offset = idx * Atlas.stride;
-
 		if (this.#getQuadrant(idx, Quadrant.se) === 0) {
+			const offset = idx * Atlas.stride;
 			const nodeX = this.view.getFloat32(offset + 4, true);
 			const nodeY = this.view.getFloat32(offset + 8, true);
 			const dist2 = Math.pow(nodeX - x, 2) + Math.pow(nodeY - y, 2);
@@ -167,13 +173,13 @@ export class Atlas {
 		const offset = idx * Atlas.stride;
 		switch (quadrant) {
 			case Quadrant.ne:
-				return this.view.getUint32(offset, true);
+				return this.view.getUint32(offset + 0x00, true);
 			case Quadrant.nw:
-				return this.view.getUint32(offset + 4, true);
+				return this.view.getUint32(offset + 0x04, true);
 			case Quadrant.sw:
-				return this.view.getUint32(offset + 8, true);
+				return this.view.getUint32(offset + 0x08, true);
 			case Quadrant.se:
-				return this.view.getUint32(offset + 12, true);
+				return this.view.getUint32(offset + 0x0c, true);
 			default:
 				throw new Error("invalid quadrant");
 		}

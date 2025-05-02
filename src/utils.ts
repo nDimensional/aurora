@@ -1,5 +1,3 @@
-import { Hsluv } from "hsluv";
-
 export type Profile = {
 	id: number;
 	did: string;
@@ -41,13 +39,3 @@ export const P = 6;
 export function getRadius(scale: number) {
 	return minRadius / Math.pow(scale, 1 / 2.5);
 }
-
-const hsluv = new Hsluv();
-
-export const convert = (h: number, s: number, l: number): [r: number, g: number, b: number] => {
-	hsluv.hsluv_h = h;
-	hsluv.hsluv_s = s;
-	hsluv.hsluv_l = l;
-	hsluv.hsluvToRgb();
-	return [hsluv.rgb_r, hsluv.rgb_g, hsluv.rgb_b];
-};

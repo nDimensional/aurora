@@ -1,6 +1,7 @@
+import { Hsluv } from "hsluv";
+
 import tileShader from "../../shaders/tile.wgsl?raw";
 
-import { convert } from "../utils.js";
 import { Store } from "../Store.js";
 import { Tile } from "../Tile.js";
 import { SquareRenderer } from "./SquareRenderer.js";
@@ -20,6 +21,16 @@ function buildCellArray(tile: Tile, cells: QuadTreeCell[] = []) {
 	if (tile.se) buildCellArray(tile.se, cells);
 	return cells;
 }
+
+const hsluv = new Hsluv();
+
+const convert = (h: number, s: number, l: number): [r: number, g: number, b: number] => {
+	hsluv.hsluv_h = h;
+	hsluv.hsluv_s = s;
+	hsluv.hsluv_l = l;
+	hsluv.hsluvToRgb();
+	return [hsluv.rgb_r, hsluv.rgb_g, hsluv.rgb_b];
+};
 
 export class TileRenderer extends SquareRenderer {
 	bindGroup: GPUBindGroup;

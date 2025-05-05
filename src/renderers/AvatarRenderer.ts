@@ -3,7 +3,7 @@ import logger from "weald";
 import avatarShader from "../../shaders/avatar.wgsl?raw";
 
 import { Cache } from "../Cache.js";
-import { assert, AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS } from "../utils.js";
+import { AVATAR_DIMENSIONS, COL_COUNT, ROW_COUNT, TEXTURE_DIMENSIONS, assert } from "../utils.js";
 import { Store, Area } from "../Store.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 

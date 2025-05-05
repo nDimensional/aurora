@@ -39,3 +39,54 @@ export const P = 6;
 export function getRadius(scale: number) {
 	return minRadius / Math.pow(scale, 1 / 2.5);
 }
+
+// add elements with CacheMap.set(key, value) and they'll
+// get shifted out in the order they were added.
+export class CacheMap<K, V> extends Map<K, V> {
+	#expiration = new Map<K, number>();
+
+	constructor(
+		public readonly capacity: number,
+		public readonly ttl = Infinity,
+	) {
+		super();
+	}
+
+	set(key: K, value: V) {
+		super.set(key, value);
+
+		if (this.size > this.capacity) {
+			for (const evict of this.keys()) {
+				if (this.size > this.capacity) {
+					super.delete(evict);
+					this.#expiration.delete(evict);
+				} else {
+					break;
+				}
+			}
+		}
+
+		this.#expiration.set(key, performance.now() + this.ttl);
+		return this;
+	}
+
+	delete(key: K) {
+		this.#expiration.delete(key);
+		return super.delete(key);
+	}
+
+	get(key: K) {
+		const result = super.get(key);
+		if (result === undefined) {
+			return undefined;
+		}
+
+		const expiration = this.#expiration.get(key) ?? 0;
+		if (expiration < performance.now()) {
+			this.delete(key);
+			return undefined;
+		}
+
+		return result;
+	}
+}

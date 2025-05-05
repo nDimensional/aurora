@@ -3,7 +3,7 @@ import logger from "weald";
 import nodeShader from "../../shaders/node.wgsl?raw";
 
 import { Store } from "../Store.js";
-import { getTilesInView, Tile, View } from "../Tile.js";
+import { Tile } from "../Tile.js";
 import { assert } from "../utils.js";
 import { SquareRenderer } from "./SquareRenderer.js";
 

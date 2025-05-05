@@ -12,6 +12,9 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
+		setProfile(null);
+		setError(null);
+
 		const key = id.toString(16).padStart(8, "0");
 		log("fetching id %d (%s)", id, key);
 
@@ -21,6 +24,7 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 				if (res.ok) {
 					const profile: Profile = await res.json();
 					setProfile(profile);
+					setError(null);
 				} else {
 					const text = await res.text();
 					setError(`${res.status} ${text}`);
@@ -39,29 +43,61 @@ export const Target: React.FC<{ id: number }> = ({ id }) => {
 	}, [id]);
 
 	if (error !== null) {
-		return <code>{error}</code>;
+		return (
+			<>
+				<div className="corner"></div>
+				<div className="header">
+					<span className="error">{error}</span>
+				</div>
+				<div className="profile"></div>
+			</>
+		);
 	} else if (profile === null) {
-		return <code>loading...</code>;
+		return (
+			<>
+				<div className="corner"></div>
+				<div className="header">
+					<span className="loading">loading...</span>
+				</div>
+				<div className="profile"></div>
+			</>
+		);
 	} else {
 		const { did, handle, display_name, description } = profile;
+
+		const displayName = display_name ? display_name : (formatHandle(handle) ?? did);
 		return (
-			<div>
-				{display_name && (
-					<>
-						<div className="display-name">{display_name}</div>
-						<hr />
-					</>
-				)}
-				<div className="handle">@{handle}</div>
-				<div className="description">
-					<p>{description}</p>
+			<>
+				<div className="corner"></div>
+				<div className="header">
+					<span className="display-name">{displayName}</span>
+					<hr />
 				</div>
-				<div>
-					<a href={`https://bsky.app/profile/${did}`} target="_blank">
-						open profile ➡
-					</a>
+				<div className="profile">
+					<div className="handle">
+						<a href={`https://bsky.app/profile/${did}`} target="_blank">
+							{handle ?? did}
+						</a>
+					</div>
+					<div className="description">
+						<p>{description}</p>
+					</div>
 				</div>
-			</div>
+			</>
 		);
 	}
 };
+
+const Profile: React.FC<{}> = (props) => {
+	return null;
+};
+
+function formatHandle(handle: string | null) {
+	if (handle === null || handle === "") {
+		return null;
+	} else if (handle.endsWith(".bsky.social")) {
+		return handle.slice(0, handle.lastIndexOf(".bsky.social"));
+	} else {
+		return handle;
+	}
+}

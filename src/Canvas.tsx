@@ -6,9 +6,11 @@ import { useDebouncedCallback } from "use-debounce";
 import { Renderer } from "./renderers/index.js";
 import { emptyArea, Store } from "./Store.js";
 import { getTilesInView, Tile } from "./Tile.js";
-import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM, getRadius } from "./utils.js";
+import { Profile, assert, getScale, MIN_ZOOM, MAX_ZOOM } from "./utils.js";
 import { Target } from "./Target.js";
 import { Search } from "./Search.js";
+import { View } from "./View.js";
+import { useStateRef } from "./hooks.js";
 
 export const initialZoom = 2000;
 
@@ -16,6 +18,7 @@ export interface CanvasProps {
 	initialOffsetX?: number;
 	initialOffsetY?: number;
 	initialZoom?: number;
+	refreshFeed?: (view: View) => void;
 }
 
 const log = logger("aurora:canvas");
@@ -26,13 +29,13 @@ log("devicePixelRatio: %d", devicePixelRatio);
 export const Canvas: React.FC<CanvasProps> = (props) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const targetRef = useRef<HTMLDivElement | null>(null);
 	const rendererRef = useRef<Renderer | null>(null);
 	const storeRef = useRef<Store | null>(null);
 
-	const [width, setWidth] = useState(600);
-	const [height, setHeight] = useState(400);
-	const widthRef = useRef<number>(width);
-	const heightRef = useRef<number>(height);
+	const [width, setWidth, widthRef] = useStateRef(600);
+	const [height, setHeight, heightRef] = useStateRef(400);
+
 	const mouseXRef = useRef<number | null>(null);
 	const mouseYRef = useRef<number | null>(null);
 	const offsetXRef = useRef<number>(props.initialOffsetX ?? 0);
@@ -47,14 +50,23 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 	const isDraggingRef = useRef<null | number>(null);
 
 	const [target, setTarget] = useState<{ id: number; x: number; y: number } | null>(null);
-	const targetOffset = useMemo(() => {
-		if (target === null) {
-			return { clientX: 0, clientY: 0 };
-		} else {
-			const scale = getScale(zoomRef.current);
-			const clientX = ((target.x + offsetXRef.current) * scale) / devicePixelRatio + widthRef.current / 2;
-			const clientY = heightRef.current / 2 - ((target.y + offsetYRef.current) * scale) / devicePixelRatio;
-			return { clientX, clientY };
+
+	const setTargetPosition = useCallback((target: { id: number; x: number; y: number }) => {
+		if (targetRef.current === null) {
+			return;
+		}
+
+		const scale = getScale(zoomRef.current);
+		const clientX = ((target.x + offsetXRef.current) * scale) / devicePixelRatio + widthRef.current / 2;
+		const clientY = heightRef.current / 2 - ((target.y + offsetYRef.current) * scale) / devicePixelRatio;
+
+		targetRef.current.style.left = Math.round(clientX + 320) + "px";
+		targetRef.current.style.top = Math.round(clientY) + "px";
+	}, []);
+
+	useEffect(() => {
+		if (target !== null) {
+			setTargetPosition(target);
 		}
 	}, [target]);
 
@@ -76,7 +88,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const maxY = h / 2 / scale - offsetYRef.current;
 			const minY = -h / 2 / scale - offsetYRef.current;
 
-			const view = { maxX, minX, maxY, minY };
+			const view: View = { maxX, minX, maxY, minY };
 
 			const divisor = 2;
 			const unit = Math.ceil(Math.log2(Math.max(w, h) / divisor / scale));
@@ -99,6 +111,8 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 					rendererRef.current?.setAvatars(area, refresh);
 				});
 			}
+
+			props.refreshFeed?.(view);
 		},
 		200,
 		{ leading: false, trailing: true, maxWait: 200 },
@@ -139,15 +153,19 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			zoomRef.current = zoom;
 			rendererRef.current.setScale(newScale);
 
-			const px = event.clientX - widthRef.current / 2;
+			const px = event.clientX - 320 - widthRef.current / 2;
 			const py = heightRef.current / 2 - event.clientY;
 			const oldX = px / oldScale;
 			const oldY = py / oldScale;
 			const newX = px / newScale;
 			const newY = py / newScale;
+
+			const offsetX = offsetXRef.current + devicePixelRatio * (newX - oldX);
+			const offsetY = offsetYRef.current + devicePixelRatio * (newY - oldY);
+
 			offsetXRef.current += devicePixelRatio * (newX - oldX);
 			offsetYRef.current += devicePixelRatio * (newY - oldY);
-			rendererRef.current.setOffset(offsetXRef.current, offsetYRef.current);
+			rendererRef.current.setOffset(offsetX, offsetY);
 			refresh();
 		}
 	}, []);
@@ -162,9 +180,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 		const w = containerRef.current.clientWidth;
 		const h = containerRef.current.clientHeight;
 		setWidth(w);
-		widthRef.current = w;
 		setHeight(h);
-		heightRef.current = h;
 
 		init(canvasRef.current, w, h).catch((err) => {
 			console.trace(err);
@@ -183,10 +199,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 			setTarget(null);
 			setWidth(width);
-			widthRef.current = width;
-
 			setHeight(height);
-			heightRef.current = height;
 
 			if (rendererRef.current !== null) {
 				rendererRef.current.setSize(width * devicePixelRatio, height * devicePixelRatio);
@@ -211,23 +224,32 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 	}, []);
 
 	const handleMouseEnter = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-		mouseXRef.current = event.clientX;
+		mouseXRef.current = event.clientX - 320;
 		mouseYRef.current = event.clientY;
 	}, []);
 
-	const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-		mouseXRef.current = event.clientX;
-		mouseYRef.current = event.clientY;
+	const handleMouseMove = useCallback(
+		(event: React.MouseEvent<HTMLCanvasElement>) => {
+			mouseXRef.current = event.clientX - 320;
+			mouseYRef.current = event.clientY;
 
-		if (isDraggingRef.current !== null) {
-			isDraggingRef.current += 1;
-			const scale = getScale(zoomRef.current);
-			offsetXRef.current += (event.movementX * devicePixelRatio) / scale;
-			offsetYRef.current -= (event.movementY * devicePixelRatio) / scale;
-			rendererRef.current?.setOffset(offsetXRef.current, offsetYRef.current);
-			refresh();
-		}
-	}, []);
+			if (isDraggingRef.current !== null) {
+				isDraggingRef.current += 1;
+				const scale = getScale(zoomRef.current);
+
+				offsetXRef.current += (event.movementX * devicePixelRatio) / scale;
+				offsetYRef.current -= (event.movementY * devicePixelRatio) / scale;
+				rendererRef.current?.setOffset(offsetXRef.current, offsetYRef.current);
+
+				if (target !== null) {
+					setTargetPosition(target);
+				}
+
+				refresh();
+			}
+		},
+		[target],
+	);
 
 	const handleMouseLeave = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		mouseXRef.current = null;
@@ -238,14 +260,14 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 	const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		setIsDragging(true);
-		setTarget(null);
+		// setTarget(null);
 		isDraggingRef.current = 0;
 	}, []);
 
 	const handleMouseUp = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
 		if (isDraggingRef.current !== null && isDraggingRef.current <= 1 && storeRef.current !== null) {
 			const scale = getScale(zoomRef.current);
-			const x = (devicePixelRatio * (event.clientX - widthRef.current / 2)) / scale - offsetXRef.current;
+			const x = (devicePixelRatio * (event.clientX - 320 - widthRef.current / 2)) / scale - offsetXRef.current;
 			const y = (devicePixelRatio * (heightRef.current / 2 - event.clientY)) / scale - offsetYRef.current;
 			log("click (%d, %d)", x, y);
 			storeRef.current.query(tilesRef.current, x, y, scale).then((target) => {
@@ -301,11 +323,9 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 						</div>
 					</div>
 				)}
-				{target && (
-					<div id="target" style={{ left: targetOffset.clientX, top: targetOffset.clientY, width: 360 }}>
-						<Target id={target.id} />
-					</div>
-				)}
+				<div id="target" ref={targetRef} style={{ width: 360, display: target ? "initial" : "none" }}>
+					{target && <Target id={target.id} />}
+				</div>
 				<canvas
 					style={{ cursor: isDragging ? "grabbing" : "grab" }}
 					ref={canvasRef}

@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-import repostIconURL from "../icons/repost.svg?url";
-import replyIconURL from "../icons/reply.svg?url";
-import likeIconURL from "../icons/like.svg?url";
 import openIconURL from "../icons/open.svg?url";
+
+import { CacheMap } from "./utils.js";
 
 type Author = {
 	associated: { chat?: { allowIncoming?: string } };
@@ -38,23 +37,67 @@ type Post = {
 	uri: string;
 };
 
-export const Feed: React.FC<{}> = ({}) => {
-	const [cursor, setCursor] = useState<string | null>(null);
-	const [feed, setFeed] = useState<{ post: Post }[]>([]);
+export interface FeedProps {
+	uris: string[];
+}
+
+export const Feed: React.FC<FeedProps> = (props) => {
+	const [posts, setPosts] = useState<Post[]>([]);
+
+	const cache = useMemo(() => new CacheMap<string, Post>(256), []);
+
 	useEffect(() => {
-		fetch("/feed.json")
-			.then((res) => res.json() as Promise<{ cursor: string; feed: { post: Post }[] }>)
-			.then(({ cursor, feed }) => {
-				setCursor(cursor);
-				setFeed(feed);
+		if (props.uris.length === 0) {
+			return setPosts([]);
+		}
+
+		const cachedPosts = props.uris.map((uri) => cache.get(uri));
+
+		const indices: number[] = [];
+		const queryParams: string[] = [];
+		for (const [i, uri] of props.uris.entries()) {
+			if (cachedPosts[i] === undefined) {
+				indices.push(i);
+				queryParams.push("uris=" + uri);
+			}
+		}
+
+		console.log("missing %d posts from cache", indices.length);
+
+		if (indices.length === 0) {
+			setPosts(cachedPosts as Post[]);
+			return;
+		}
+
+		const query = queryParams.join("&");
+
+		fetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?${query}`)
+			.then((res) => res.json())
+			.then(({ posts }: { posts: Post[] }) => {
+				console.log(posts);
+				for (const post of posts) {
+					const index = props.uris.indexOf(post.uri);
+					if (index === -1) {
+						console.error("unexpected post uri", post);
+						continue;
+					}
+
+					cachedPosts[index] = post;
+					cache.set(post.uri, post);
+				}
+
+				setPosts(cachedPosts.filter((post) => post !== undefined));
 			});
-	}, []);
-	console.log(feed);
+
+		// fetch("/feed2.json")
+		// 	.then((res) => res.json())
+		// 	.then(({ posts }: { posts: Post[] }) => setPosts(posts));
+	}, [props.uris]);
 
 	return (
 		<div id="feed">
-			{feed.map(({ post }, i) => (
-				<Post key={i} post={post} />
+			{posts.map((post) => (
+				<Post key={post.uri} post={post} />
 			))}
 		</div>
 	);
@@ -84,23 +127,11 @@ const Post: React.FC<{ post: Post }> = ({ post }) => {
 					</div>
 				</a>
 				<a href={postURL} target="_blank" rel="noopener noreferrer">
-					<img src={openIconURL} width="24" height="24" />
+					<img src={openIconURL} width="22" height="22" />
 				</a>
 			</div>
 
 			<div className="post-text">{post.record.text}</div>
-
-			<div className="engagement">
-				<span>
-					<img src={replyIconURL} width="18" height="18" /> {post.replyCount}
-				</span>
-				<span>
-					<img src={repostIconURL} width="18" height="18" /> {post.repostCount + post.quoteCount}
-				</span>
-				<span>
-					<img src={likeIconURL} width="18" height="18" /> {post.likeCount}
-				</span>
-			</div>
 		</div>
 	);
 };

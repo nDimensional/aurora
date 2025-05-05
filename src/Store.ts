@@ -136,9 +136,9 @@ export class Store {
 	public close() {}
 
 	public async locate(id: number): Promise<{ x: number; y: number }> {
-		const route = `/api/${Store.snapshot}/position/${id.toString(16).padStart(8, "0")}`;
-		const res = await fetch(`http://slacker:3000` + route);
-		assert(res.ok, "failed to fetch route /api/:snapshot/position/:id");
+		const key = id.toString(16).padStart(8, "0");
+		const res = await fetch(`http://localhost:8000/api/locate/${key}`);
+		assert(res.ok, "failed to fetch route /api/locate/${key}");
 		return await res.json();
 	}
 
@@ -150,7 +150,6 @@ export class Store {
 			leafTiles.map((tile) =>
 				Store.getAtlas(tile).then(
 					(atlas) => {
-						console.log("looking for nearest body", { x, y }, r);
 						const target = atlas.getNearestBody(x, y);
 						if (target.distance < (result?.distance ?? r)) {
 							result = target;
@@ -161,7 +160,6 @@ export class Store {
 			),
 		);
 
-		console.log("got result", result);
 		return result;
 	}
 
@@ -214,13 +212,11 @@ export class Store {
 
 	public async getArea(view: View, tiles: Tile[], signal?: AbortSignal): Promise<Area> {
 		const leafTiles = tiles.filter((tile) => tile.atlas !== undefined);
-		console.log("get area", leafTiles, view);
 		const bodies: { id: number; x: number; y: number }[] = [];
 		await Promise.all(
 			leafTiles.map((tile) =>
 				Store.getAtlas(tile).then(
 					(atlas) => {
-						console.log("got atlas", atlas, atlas.area.intersectView(view));
 						for (const body of atlas.getBodies(view)) {
 							if (bodies.length >= Store.areaLimit) {
 								break;
@@ -235,7 +231,6 @@ export class Store {
 		);
 
 		bodies.sort((a, b) => (a.id < b.id ? -1 : b.id < a.id ? 1 : 0));
-		console.log("got bodies", bodies);
 		return bodies;
 	}
 

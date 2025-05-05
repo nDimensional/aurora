@@ -95,12 +95,6 @@ export class Atlas {
 	) {
 		this.area = new Area(tile.area.s / 2, tile.area.x, tile.area.y);
 		this.view = new DataView(atlasBuffer);
-
-		for (const body of this.getBodies()) {
-			if (!this.area.contains(body.x, body.y)) {
-				console.error("WTF!!", this.area, body);
-			}
-		}
 	}
 
 	public *getBodies(

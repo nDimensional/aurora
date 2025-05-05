@@ -1,12 +1,21 @@
 @import url("https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 
+:root {
+	--target-radius: 32px;
+
+	--text-font-mono: "Courier Prime", monospace;
+	--text-font-sans:
+		InterVariable, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+		"Apple Color Emoji", "Segoe UI Emoji";
+}
+
 html {
 	background-color: #1f3030;
 	height: 100%;
 	line-height: 1.25em;
 
 	color: antiquewhite;
-	font-family: "Courier Prime", monospace;
+	font-family: var(--text-font-mono);
 	font-weight: 400;
 	font-style: normal;
 }
@@ -30,12 +39,14 @@ progress::-webkit-progress-value {
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
+
+	display: flex;
+	flex-direction: row;
 }
 
 #container {
-	width: 100%;
+	flex: 1;
 	height: 100%;
-	overflow: hidden;
 }
 
 #error {
@@ -49,12 +60,70 @@ canvas {
 }
 
 #target {
-	background-color: #1f3030;
-	border: 1px solid antiquewhite;
-	border-radius: 2px;
-	padding: 1em 1em;
 	position: absolute;
 	word-break: break-word;
+}
+
+#target .corner {
+	margin-top: calc(0px - var(--target-radius));
+	margin-left: calc(1px - var(--target-radius));
+	width: calc(2 * var(--target-radius) - 2px);
+	height: calc(2 * var(--target-radius) - 2px);
+	border: 1px solid antiquewhite;
+	border-radius: var(--target-radius);
+}
+
+#target .header {
+	margin-top: calc(0px - var(--target-radius));
+	margin-left: 1px;
+	clip-path: path("M 32 0 H 360 V 55 H 0 V 32 A 32 32 0 0 0 32 0 Z");
+	padding-top: 1em;
+	border-top: 1px solid antiquewhite;
+	padding-bottom: 4px;
+	border-top-right-radius: 2px;
+}
+
+#target .profile {
+	margin-left: 1px;
+	margin-top: -8px;
+	border-bottom: 1px solid antiquewhite;
+	border-bottom-right-radius: 2px;
+	border-bottom-left-radius: 2px;
+	min-height: 14px;
+	font-family: var(--text-font-sans);
+}
+
+#target .header,
+#target .profile {
+	background-color: #1f3030;
+	padding-left: 1em;
+	padding-right: 1em;
+	border-left: 1px solid antiquewhite;
+	border-right: 1px solid antiquewhite;
+}
+
+#target .header span {
+	margin-left: 20px;
+	font-family: var(--text-font-sans);
+}
+
+#target .header .error,
+#target .header .loading {
+	font-size: 14px;
+}
+
+#target .header .display-name {
+	font-size: 16px;
+}
+
+#target .profile .handle {
+	font-family: var(--text-font-sans);
+	font-size: 14px;
+}
+
+#target .profile .description {
+	font-family: var(--text-font-sans);
+	font-size: 14px;
 }
 
 #panel {
@@ -72,11 +141,7 @@ canvas {
 }
 
 a {
-	color: aquamarine;
-}
-
-hr {
-	border-style: dashed;
+	color: #a1c2c2;
 }
 
 ul {
@@ -159,10 +224,7 @@ ul li {
 }
 
 #feed {
-	position: absolute;
 	width: 320px;
-	top: 0;
-	bottom: 0;
 	display: block;
 	overflow-y: scroll;
 
@@ -178,34 +240,24 @@ ul li {
 	/* border: 1px solid #e1e8ed; */
 	/* border-radius: 12px; */
 	padding: 6px;
-	/* margin-bottom: 16px; */
-	/* border-bottom: 1px solid #1f3030; */
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+
 	border-bottom: 1px solid #536471;
 	color: initial;
-	font-family:
-		InterVariable,
-		system-ui,
-		-apple-system,
-		BlinkMacSystemFont,
-		"Segoe UI",
-		Roboto,
-		Helvetica,
-		Arial,
-		sans-serif,
-		"Apple Color Emoji",
-		"Segoe UI Emoji";
+	font-family: var(--text-font-sans);
 }
 
 .post-header {
 	display: flex;
-	align-items: center;
+	align-items: start;
 	justify-content: space-between;
-	margin-bottom: 8px;
+	/* margin-bottom: 8px; */
 }
 
 .post-header a {
 	text-decoration: none;
-	/* color: initial; */
 	color: antiquewhite;
 	display: flex;
 	align-items: center;
@@ -228,12 +280,11 @@ ul li {
 }
 
 .handle {
-	color: #536471;
+	color: #969ca1;
 	font-size: 14px;
 }
 
 .post-text {
-	/* color: initial; */
 	color: antiquewhite;
 	font-size: 14px;
 	line-height: 1.2;
@@ -244,21 +295,4 @@ ul li {
 	margin-bottom: 4px;
 	color: #536471;
 	font-size: 12px;
-}
-
-.engagement {
-	margin-top: 4px;
-	display: flex;
-	justify-content: space-between;
-	color: #536471;
-	font-size: 12px;
-}
-
-.engagement span {
-	display: inline-flex;
-	align-items: center;
-}
-
-.engagement img {
-	margin-right: 2px;
 }

@@ -1,7 +1,7 @@
 import { Cache } from "../Cache.js";
 import { assert, getRadius } from "../utils.js";
 import { Store, Area } from "../Store.js";
-import { Tile, View } from "../Tile.js";
+import { Tile } from "../Tile.js";
 
 import { NodeRenderer } from "./NodeRenderer.js";
 import { AvatarRenderer } from "./AvatarRenderer.js";
@@ -141,6 +141,7 @@ export class Renderer {
 	}
 
 	public setTiles(tiles: Tile[], unit: number, refresh?: () => void) {
+		// console.log("tiles", tiles);
 		this.nodeRenderer.setTiles(tiles, unit, refresh);
 
 		tiles.filter((tile) => tile.atlas !== undefined);

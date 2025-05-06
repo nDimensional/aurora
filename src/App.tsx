@@ -4,6 +4,7 @@ import { useDebouncedCallback } from "use-debounce";
 import chevronRightURL from "../icons/chevron-right.svg?url";
 import chevronLeftURL from "../icons/chevron-left.svg?url";
 
+import { Store } from "./Store.js";
 import { Canvas } from "./Canvas.js";
 import { Landing } from "./Landing.js";
 import { Feed } from "./Feed.js";
@@ -37,7 +38,7 @@ export const App: React.FC<{}> = ({}) => {
 
 		console.log("FETCHING");
 
-		fetch(`http://localhost:8000/api/query?${query}&count=10`)
+		fetch(`${Store.apiURL}/api/query?${query}&count=10`)
 			.then((res) => res.json())
 			.then((uris: string[]) => setFeedURIs(uris));
 	}, []);

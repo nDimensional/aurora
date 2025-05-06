@@ -1,5 +1,5 @@
 import { Tile } from "./Tile.js";
-import { View, contains } from "./View.js";
+import { View, viewContains } from "./View.js";
 
 export type Target = { id: number; x: number; y: number; distance: number };
 
@@ -10,19 +10,18 @@ enum Quadrant {
 	se = 3,
 }
 
-// We can pack both nodes and leaves into 16 bytes total,
+// We can pack both nodes and leaves into 12 bytes total,
 // while still distinguishing between them.
 //
-// All values are little-endian.
+// All values are big-endian.
 //
 // Intermediate nodes hold up to four links
-// [ ne: u32, nw: u32, sw: u32, se: u32 ]
-// and use NULL for empty slots.
+// [ ne: u24, nw: u24, sw: u24, se: u24 ]
+// and use 0 for empty slots.
 // these values are "idx" indices into the node array.
 //
-// Leaf nodes have [ id: u32, x: f32, y: f32, 0: u32 ]
-// The last slot node.se = 0 distinguishes leaves from nodes,
-// since nodes can never link to index zero.
+// Leaf nodes have [ id: u31, x: f32, y: f32 ]
+// The node id has the highest bit set to 1 to pad to a u32.
 // the id value here is NOT an index into the array;
 // it is an external opaque identifier.
 
@@ -83,18 +82,17 @@ class Area {
 }
 
 export class Atlas {
-	public static NULL = 0xffffffff;
-	public static stride = 16;
+	public static stride = 12;
 
 	public readonly view: DataView;
 	public readonly area: Area;
 
 	public constructor(
 		public readonly tile: Tile,
-		public readonly atlasBuffer: ArrayBuffer,
+		public readonly buffer: ArrayBuffer,
 	) {
 		this.area = new Area(tile.area.s / 2, tile.area.x, tile.area.y);
-		this.view = new DataView(atlasBuffer);
+		this.view = new DataView(buffer);
 	}
 
 	public *getBodies(
@@ -104,78 +102,63 @@ export class Atlas {
 	}
 
 	*#getBodies(area: Area, idx: number, view: View): IterableIterator<{ id: number; x: number; y: number }> {
-		// Check if this is a leaf node (se quadrant is 0)
-		if (this.#getQuadrant(idx, Quadrant.se) === 0) {
-			const offset = idx * Atlas.stride;
-			const node = {
-				id: this.#getQuadrant(idx, Quadrant.ne),
-				x: this.view.getFloat32(offset + 4, true),
-				y: this.view.getFloat32(offset + 8, true),
-			};
-
-			// Check if the body is within the search box
-			if (contains(view, node)) {
+		const node = this.#parseNode(idx);
+		if (Array.isArray(node)) {
+			const [ne, nw, sw, se] = node;
+			if (ne !== 0) yield* this.#getBodies(area.divide(Quadrant.ne), ne, view);
+			if (nw !== 0) yield* this.#getBodies(area.divide(Quadrant.nw), nw, view);
+			if (sw !== 0) yield* this.#getBodies(area.divide(Quadrant.sw), sw, view);
+			if (se !== 0) yield* this.#getBodies(area.divide(Quadrant.se), se, view);
+		} else {
+			if (viewContains(view, node)) {
 				yield node;
 			}
-		} else if (area.intersectView(view)) {
-			// Recursively search children
-			const ne = this.#getQuadrant(idx, Quadrant.ne);
-			const nw = this.#getQuadrant(idx, Quadrant.nw);
-			const sw = this.#getQuadrant(idx, Quadrant.sw);
-			const se = this.#getQuadrant(idx, Quadrant.se);
-
-			if (ne !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.ne), ne, view);
-			if (nw !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.nw), nw, view);
-			if (sw !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.sw), sw, view);
-			if (se !== Atlas.NULL) yield* this.#getBodies(area.divide(Quadrant.se), se, view);
 		}
 	}
 
 	public getNearestBody(x: number, y: number): Target {
-		const target = { id: Atlas.NULL, x: 0, y: 0, distance: Infinity };
+		const target = { id: 0, x: 0, y: 0, distance: Infinity };
 		this.#getNearestBody(target, this.area, 0, x, y);
 		target.distance = Math.sqrt(target.distance);
 		return target;
 	}
 
 	#getNearestBody(target: Target, area: Area, idx: number, x: number, y: number) {
-		if (this.#getQuadrant(idx, Quadrant.se) === 0) {
-			const offset = idx * Atlas.stride;
-			const nodeX = this.view.getFloat32(offset + 4, true);
-			const nodeY = this.view.getFloat32(offset + 8, true);
-			const dist2 = Math.pow(nodeX - x, 2) + Math.pow(nodeY - y, 2);
+		const node = this.#parseNode(idx);
+		if (Array.isArray(node)) {
+			const [ne, nw, sw, se] = node;
+			if (ne !== 0) this.#getNearestBody(target, area.divide(Quadrant.ne), ne, x, y);
+			if (nw !== 0) this.#getNearestBody(target, area.divide(Quadrant.nw), nw, x, y);
+			if (sw !== 0) this.#getNearestBody(target, area.divide(Quadrant.sw), sw, x, y);
+			if (se !== 0) this.#getNearestBody(target, area.divide(Quadrant.se), se, x, y);
+		} else {
+			const dist2 = Math.pow(node.x - x, 2) + Math.pow(node.y - y, 2);
 			if (dist2 < target.distance) {
-				target.id = this.#getQuadrant(idx, Quadrant.ne);
-				target.x = nodeX;
-				target.y = nodeY;
+				target.id = node.id;
+				target.x = node.x;
+				target.y = node.y;
 				target.distance = dist2;
 			}
-		} else if (area.getMinDist2(x, y) < target.distance) {
-			const ne = this.#getQuadrant(idx, Quadrant.ne);
-			const nw = this.#getQuadrant(idx, Quadrant.nw);
-			const sw = this.#getQuadrant(idx, Quadrant.sw);
-			const se = this.#getQuadrant(idx, Quadrant.se);
-
-			if (ne !== Atlas.NULL) this.#getNearestBody(target, area.divide(Quadrant.ne), ne, x, y);
-			if (nw !== Atlas.NULL) this.#getNearestBody(target, area.divide(Quadrant.nw), nw, x, y);
-			if (sw !== Atlas.NULL) this.#getNearestBody(target, area.divide(Quadrant.sw), sw, x, y);
-			if (se !== Atlas.NULL) this.#getNearestBody(target, area.divide(Quadrant.se), se, x, y);
 		}
 	}
 
-	#getQuadrant(idx: number, quadrant: Quadrant): number {
+	#parseNode(idx: number): { id: number; x: number; y: number } | [ne: number, nw: number, sw: number, se: number] {
 		const offset = idx * Atlas.stride;
-		switch (quadrant) {
-			case Quadrant.ne:
-				return this.view.getUint32(offset + 0x00, true);
-			case Quadrant.nw:
-				return this.view.getUint32(offset + 0x04, true);
-			case Quadrant.sw:
-				return this.view.getUint32(offset + 0x08, true);
-			case Quadrant.se:
-				return this.view.getUint32(offset + 0x0c, true);
-			default:
-				throw new Error("invalid quadrant");
+
+		if ((this.view.getUint8(offset) & 0x80) !== 0) {
+			const id = this.view.getUint32(offset, false) & 0x7fffffff;
+			const x = this.view.getFloat32(offset + 4, false);
+			const y = this.view.getFloat32(offset + 8, false);
+			return { id, x, y };
+		} else {
+			const node: [number, number, number, number] = [0, 0, 0, 0];
+			for (let i = 0; i < 4; i++) {
+				const a = this.view.getUint8(offset + i * 3);
+				const b = this.view.getUint8(offset + i * 3 + 1);
+				const c = this.view.getUint8(offset + i * 3 + 2);
+				node[i] = (a << 16) | (b << 8) | c;
+			}
+			return node;
 		}
 	}
 }

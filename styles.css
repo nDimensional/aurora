@@ -44,7 +44,7 @@ progress::-webkit-progress-value {
 	flex-direction: row;
 }
 
-#container {
+.container {
 	flex: 1;
 	height: 100%;
 }
@@ -60,13 +60,14 @@ canvas {
 }
 
 #target {
+	z-index: 1;
 	position: absolute;
 	word-break: break-word;
 }
 
 #target .corner {
 	margin-top: calc(0px - var(--target-radius));
-	margin-left: calc(1px - var(--target-radius));
+	margin-left: calc(0px - var(--target-radius));
 	width: calc(2 * var(--target-radius) - 2px);
 	height: calc(2 * var(--target-radius) - 2px);
 	border: 1px solid antiquewhite;
@@ -75,7 +76,6 @@ canvas {
 
 #target .header {
 	margin-top: calc(0px - var(--target-radius));
-	margin-left: 1px;
 	clip-path: path("M 32 0 H 360 V 55 H 0 V 32 A 32 32 0 0 0 32 0 Z");
 	padding-top: 1em;
 	border-top: 1px solid antiquewhite;
@@ -84,12 +84,11 @@ canvas {
 }
 
 #target .profile {
-	margin-left: 1px;
 	margin-top: -8px;
 	border-bottom: 1px solid antiquewhite;
 	border-bottom-right-radius: 2px;
 	border-bottom-left-radius: 2px;
-	min-height: 14px;
+	min-height: 16px;
 	font-family: var(--text-font-sans);
 }
 
@@ -102,17 +101,17 @@ canvas {
 	border-right: 1px solid antiquewhite;
 }
 
-#target .header span {
+#target .header :first-child {
 	margin-left: 20px;
-	font-family: var(--text-font-sans);
 }
 
 #target .header .error,
 #target .header .loading {
-	font-size: 14px;
+	font-family: var(--text-font-mono);
 }
 
 #target .header .display-name {
+	font-family: var(--text-font-sans);
 	font-size: 16px;
 }
 
@@ -124,6 +123,10 @@ canvas {
 #target .profile .description {
 	font-family: var(--text-font-sans);
 	font-size: 14px;
+}
+
+#target hr {
+	border-color: #5f6769;
 }
 
 #panel {
@@ -223,7 +226,24 @@ ul li {
 	margin: 0 6px;
 }
 
+#feed-toggle {
+	position: absolute;
+	margin: 8px;
+	padding: 8px;
+	display: flex;
+	background: rgb(137 154 148 / 0.6);
+	border: 1px solid rgb(250 235 215 / 0.2);
+	border-radius: 2px;
+}
+
+#feed-toggle:hover {
+	cursor: pointer;
+	background: rgb(137 154 148 / 0.9);
+	border: 1px solid rgb(250 235 215 / 0.6);
+}
+
 #feed {
+	z-index: 2;
 	width: 320px;
 	display: block;
 	overflow-y: scroll;

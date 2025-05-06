@@ -62,8 +62,6 @@ export const Feed: React.FC<FeedProps> = (props) => {
 			}
 		}
 
-		console.log("missing %d posts from cache", indices.length);
-
 		if (indices.length === 0) {
 			setPosts(cachedPosts as Post[]);
 			return;
@@ -74,7 +72,6 @@ export const Feed: React.FC<FeedProps> = (props) => {
 		fetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?${query}`)
 			.then((res) => res.json())
 			.then(({ posts }: { posts: Post[] }) => {
-				console.log(posts);
 				for (const post of posts) {
 					const index = props.uris.indexOf(post.uri);
 					if (index === -1) {

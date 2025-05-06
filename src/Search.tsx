@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import searchImageURL from "../search.svg?url";
 
+import { FullscreenContext } from "./FullscreenContext.js";
 import { Profile } from "./utils.js";
 
 async function search(q: string): Promise<Profile | null> {
@@ -24,37 +25,22 @@ export interface SearchProps {
 export const Search: React.FC<SearchProps> = (props) => {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [hasFocus, setHasFocus] = useState(false);
-	const [visible, setVisible] = useState(true);
-
-	const initialRenderRef = useRef(true);
+	const { fullscreen, setFullscreen } = useContext(FullscreenContext);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "f") {
 				if ((event.ctrlKey && !event.metaKey) || (event.metaKey && !event.ctrlKey)) {
 					event.preventDefault();
-					setVisible(true);
-					inputRef.current?.focus();
-					inputRef.current?.select();
+					setFullscreen(false);
+					setHasFocus(true);
 				}
-			}
-
-			if (event.key === "Escape") {
-				setVisible((visible) => !visible);
 			}
 		};
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, []);
-
-	useLayoutEffect(() => {
-		if (initialRenderRef.current) {
-			initialRenderRef.current = false;
-		} else if (visible) {
-			inputRef.current?.focus();
-		}
-	}, [visible]);
 
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -75,9 +61,15 @@ export const Search: React.FC<SearchProps> = (props) => {
 		[props.onLocate],
 	);
 
+	useEffect(() => {
+		if (!fullscreen && hasFocus) {
+			inputRef.current?.focus();
+		}
+	}, [fullscreen, hasFocus]);
+
 	const [value, setValue] = useState("");
 
-	const visibility = visible ? "visible" : "hidden";
+	const visibility = fullscreen ? "hidden" : "visible";
 	return (
 		<div id="search" style={hasFocus ? { visibility, opacity: 1 } : { visibility }}>
 			<input

@@ -14,16 +14,7 @@ export type ProgressCallback = (count: number, total: number) => void;
 const log = logger("aurora:store");
 
 export class Store {
-	// public static apiURL = "http://localhost:8000";
 	public static apiURL = "https://cloud-atlas-server.fly.dev";
-
-	// public static snapshot = "2025-02-21";
-	// public static baseURL = "http://slacker:3001/2025-02-21/tiles";
-	// public static capacity = 80 * 4096;
-
-	// public static snapshot = "2025-02-21-1e5";
-	// public static baseURL = "/1e5";
-	// public static capacity = 10000;
 
 	public static snapshot = "2025-02-21";
 	public static baseURL = "https://cdn.ndimensional.xyz/2025-02-21";

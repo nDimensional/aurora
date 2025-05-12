@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 
 import chevronRightURL from "../icons/chevron-right.svg?url";
@@ -12,13 +12,20 @@ import { View } from "./View.js";
 import { FullscreenContext } from "./FullscreenContext.js";
 import { useStateRef } from "./hooks.js";
 
+const hashPattern = /^(\d{4}-\d{2}-\d{2})@(-?\d+),(-?\d+),(\d+)$/;
+
 export const App: React.FC<{}> = ({}) => {
-	const [hash, setHash] = useState(window.location.hash.slice(1));
+	const [hash, setHash, hashRef] = useStateRef(window.location.hash.slice(1));
 
 	useEffect(() => {
 		const handleHashChange = (event: HashChangeEvent) => {
 			const url = new URL(event.newURL);
-			setHash(url.hash.slice(1));
+			const hash = url.hash.slice(1);
+			if (hash !== hashRef.current) {
+				if (hash === "" || hashPattern.test(hash)) {
+					setHash(hash);
+				}
+			}
 		};
 
 		window.addEventListener("hashchange", handleHashChange);
@@ -76,10 +83,23 @@ export const App: React.FC<{}> = ({}) => {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, []);
 
+	const { x, y, zoom } = useMemo<{ x?: number; y?: number; zoom?: number }>(() => {
+		const result = hashPattern.exec(hash);
+		if (result === null) {
+			return {};
+		}
+
+		const [_, date, x, y, zoom] = result;
+		if (date !== Store.snapshot) {
+			return {};
+		}
+
+		return { date, x: parseFloat(x), y: parseFloat(y), zoom: parseFloat(zoom) };
+	}, [hash]);
+
 	if (hash === "") {
 		return <Landing />;
 	} else {
-		const [x, y, zoom] = hash.split(",").map((f) => parseInt(f));
 		return (
 			<FullscreenContext.Provider value={{ fullscreen, setFullscreen }}>
 				<div

@@ -14,6 +14,8 @@ import { useStateRef } from "./hooks.js";
 
 export const initialZoom = 2000;
 
+export const origin = `#${Store.snapshot}@0,0,${initialZoom}`;
+
 export interface CanvasProps {
 	initialOffsetX?: number;
 	initialOffsetY?: number;
@@ -106,7 +108,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 			const z = Math.round(zoomRef.current);
 			const x = Math.round(offsetXRef.current);
 			const y = Math.round(offsetYRef.current);
-			window.location.replace(`#${x},${y},${z}`);
+			window.location.replace(`#${Store.snapshot}@${x},${y},${z}`);
 
 			if (zoomRef.current > 400) {
 				rendererRef.current?.setAvatars(emptyArea, refresh);

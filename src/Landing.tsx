@@ -1,8 +1,6 @@
 import React, { useMemo } from "react";
 
-import { initialZoom } from "./Canvas.js";
-
-const origin = `#0,0,${initialZoom}`;
+import { origin } from "./Canvas.js";
 
 export const Landing: React.FC<{}> = ({}) => {
 	const supportsWebGPU = useMemo(() => navigator.gpu !== undefined, []);

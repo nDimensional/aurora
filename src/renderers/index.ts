@@ -127,7 +127,7 @@ export class Renderer {
 			],
 		});
 
-		this.tileRenderer.render(passEncoder);
+		// this.tileRenderer.render(passEncoder);
 		this.nodeRenderer.render(passEncoder);
 		this.avatarRenderer.render(passEncoder);
 		passEncoder.end();

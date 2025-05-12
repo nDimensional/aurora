@@ -20,7 +20,6 @@
 	"homepage": "https://github.com/nDimensional/aurora#readme",
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20241218.0",
-		"better-sqlite3": "^11.7.0",
 		"typescript": "^5.7.2",
 		"vite": "^5.4.11",
 		"wrangler": "^3.99.0"

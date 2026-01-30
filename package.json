@@ -19,21 +19,20 @@
 	},
 	"homepage": "https://github.com/nDimensional/aurora#readme",
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20241218.0",
-		"typescript": "^5.7.2",
-		"vite": "^5.4.11",
-		"wrangler": "^3.99.0"
+		"@cloudflare/workers-types": "^4.20260130.0",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1",
+		"wrangler": "^4.61.1"
 	},
 	"dependencies": {
-		"@noble/hashes": "^1.6.1",
-		"@types/react": "^19.0.12",
-		"@types/react-dom": "^19.0.4",
-		"@webgpu/types": "^0.1.52",
+		"@types/react": "^19.2.10",
+		"@types/react-dom": "^19.2.3",
+		"@webgpu/types": "^0.1.69",
 		"hsluv": "^1.0.1",
-		"p-queue": "^8.0.1",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0",
-		"use-debounce": "^10.0.4",
-		"weald": "^1.0.4"
+		"p-queue": "^9.1.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"use-debounce": "^10.1.0",
+		"weald": "^1.1.1"
 	}
 }

@@ -49,6 +49,7 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 	const zoomRef = useRef<number>(props.initialZoom ?? initialZoom);
 
 	const [status, setStatus] = useState<string | null>(null);
+	console.log(status);
 	const [progress, setProgress] = useState<number>(0);
 	const [error, setError] = useState<any>(null);
 
@@ -96,8 +97,10 @@ export const Canvas: React.FC<CanvasProps> = (props) => {
 
 			const view: View = { maxX, minX, maxY, minY };
 
+			// divisor controls the tile resolution that we render.
+			// could be set to 3 to render more, smaller tiles.
 			const divisor = 2;
-			const unit = Math.ceil(Math.log2(Math.max(w, h) / divisor / scale));
+			const unit = Math.ceil(Math.log2(Math.max(maxX - minX, maxY - minY) / divisor));
 			log("unit", unit);
 
 			const s = Math.pow(2, unit);

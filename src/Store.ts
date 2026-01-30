@@ -18,6 +18,8 @@ export class Store {
 
 	public static snapshot = "2025-02-21";
 	public static baseURL = "https://cdn.ndimensional.xyz/2025-02-21";
+	// public static snapshot = "2025-07-15";
+	// public static baseURL = "http://slacker:3000";
 	public static capacity = 80 * 4096;
 
 	public static async create(onProgress?: ProgressCallback): Promise<Store> {

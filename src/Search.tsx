@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import searchImageURL from "../search.svg?url";
 

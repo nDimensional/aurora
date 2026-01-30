@@ -16,6 +16,24 @@ const hashPattern = /^(\d{4}-\d{2}-\d{2})@(-?\d+),(-?\d+),(\d+)$/;
 
 export const App: React.FC<{}> = ({}) => {
 	const [hash, setHash, hashRef] = useStateRef(window.location.hash.slice(1));
+	const [showFeed, setShowFeed, showFeedRef] = useStateRef(false);
+	const [feedURIs, setFeedURIs] = useState<string[]>([]);
+
+	const viewRef = useRef<View>({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+
+	const refreshFeed = useCallback(() => {
+		if (!showFeedRef.current) {
+			return;
+		}
+
+		const query = Object.entries(viewRef.current)
+			.map((entry) => entry.join("="))
+			.join("&");
+
+		fetch(`${Store.apiURL}/api/query?${query}&count=10`)
+			.then((res) => res.json())
+			.then((uris: string[]) => setFeedURIs(uris));
+	}, []);
 
 	useEffect(() => {
 		const handleHashChange = (event: HashChangeEvent) => {
@@ -28,39 +46,14 @@ export const App: React.FC<{}> = ({}) => {
 			}
 		};
 
+		const intervalId = setInterval(refreshFeed, 1000);
+		refreshFeed();
+
 		window.addEventListener("hashchange", handleHashChange);
-		return () => window.removeEventListener("hashchange", handleHashChange);
-	}, []);
-
-	const [feedURIs, setFeedURIs] = useState<string[]>([]);
-
-	const [showFeed, setShowFeed, showFeedRef] = useStateRef(false);
-
-	const viewRef = useRef<View>({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
-
-	const refreshFeed = useCallback(() => {
-		const query = Object.entries(viewRef.current)
-			.map((entry) => entry.join("="))
-			.join("&");
-
-		console.log("FETCHING");
-
-		fetch(`${Store.apiURL}/api/query?${query}&count=10`)
-			.then((res) => res.json())
-			.then((uris: string[]) => setFeedURIs(uris));
-	}, []);
-
-	const refreshFeedDebounced = useDebouncedCallback(refreshFeed, 1000, {
-		leading: false,
-		trailing: true,
-		maxWait: 1000,
-	});
-
-	const handleViewChange = useCallback((view: View) => {
-		viewRef.current = view;
-		if (showFeedRef.current) {
-			refreshFeedDebounced();
-		}
+		return () => {
+			window.removeEventListener("hashchange", handleHashChange);
+			clearInterval(intervalId);
+		};
 	}, []);
 
 	const handleFeedToggle = useCallback(() => {
@@ -110,7 +103,8 @@ export const App: React.FC<{}> = ({}) => {
 					<img src={showFeed ? chevronLeftURL : chevronRightURL} width="20" height="20" />
 				</div>
 				{showFeed && <Feed uris={feedURIs} />}
-				<Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} onViewChange={handleViewChange} />
+				{/*<Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} onViewChange={handleViewChange} />*/}
+				<Canvas initialOffsetX={x} initialOffsetY={y} initialZoom={zoom} />
 			</FullscreenContext.Provider>
 		);
 	}
